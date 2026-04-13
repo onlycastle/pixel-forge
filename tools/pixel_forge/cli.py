@@ -116,7 +116,11 @@ def _cmd_validate(args: argparse.Namespace) -> int:
             palette_result = check_palette(
                 img, project.palette, project.max_off_palette_pixels
             )
-            grid_result = check_grid(img, project.tile_size)
+            grid_result = (
+                check_grid(img, project.tile_size)
+                if args.kind == "tile"
+                else None
+            )
             alpha_result = check_alpha(img)
     except Exception as err:  # noqa: BLE001 - top-level boundary
         print(
@@ -125,18 +129,27 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         )
         return 3
 
+    validation = {
+        "palette": palette_result.status,
+        "grid": grid_result.status if grid_result is not None else "n/a",
+        "alpha": alpha_result.status,
+    }
+    validation_details: dict = {
+        "palette": palette_result.details,
+        "alpha": alpha_result.details,
+    }
+    if grid_result is not None:
+        validation_details["grid"] = grid_result.details
+
+    passed = palette_result.status != "fail" and (
+        grid_result is None or grid_result.status != "fail"
+    )
+
     payload = {
         "path": str(img_path),
-        "validation": {
-            "palette": palette_result.status,
-            "grid": grid_result.status,
-            "alpha": alpha_result.status,
-        },
-        "details": {
-            "palette": palette_result.details,
-            "grid": grid_result.details,
-            "alpha": alpha_result.details,
-        },
+        "validation": validation,
+        "validation_details": validation_details,
+        "passed": passed,
     }
     print(json.dumps(payload))
     return 0
@@ -293,6 +306,7 @@ def build_parser() -> argparse.ArgumentParser:
     val.add_argument("--projects-root", default="projects")
     val.add_argument("--project", required=True)
     val.add_argument("--path", required=True)
+    val.add_argument("--kind", choices=["tile", "prop", "character"], default="tile")
     val.set_defaults(func=_cmd_validate)
 
     return parser

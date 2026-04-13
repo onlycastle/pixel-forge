@@ -24,6 +24,12 @@ class GenerateRequest:
 
 @dataclass(frozen=True)
 class Variant:
+    """One generated asset with its validation results.
+
+    `validation["grid"]` is `"pass"`, `"warn"`, or `"fail"` for `kind == "tile"`,
+    and the sentinel `"n/a"` for `kind in {"prop", "character"}` where grid
+    alignment is not enforced.
+    """
     path: Path
     validation: dict[str, str]
     validation_details: dict[str, Any]
@@ -36,14 +42,24 @@ class GenerateResult:
     errors: list[str]
 
 
-def _build_prompt(project: Project, user_prompt: str) -> str:
+def _build_prompt(project: Project, user_prompt: str, kind: str) -> str:
     palette_lines = "\n".join(f"#{r:02x}{g:02x}{b:02x}" for r, g, b in project.palette)
+    if kind == "tile":
+        output_line = (
+            f"Output: {project.tile_size}x{project.tile_size} PNG, seamless tile, "
+            f"transparent background, pixel art."
+        )
+    else:
+        output_line = (
+            "Output: PNG with transparent background, pixel art, sized to the subject. "
+            f"Use the project's {project.tile_size}-pixel grid as the unit scale."
+        )
     return (
         f"{project.prose}\n"
         f"Palette (use ONLY these colors):\n{palette_lines}\n"
         "Reference image attached: match its line weight, shading, detail density.\n"
         f"Task: {user_prompt}\n"
-        f"Output: {project.tile_size}x{project.tile_size} PNG, transparent background, pixel art.\n"
+        f"{output_line}\n"
     )
 
 
@@ -56,7 +72,7 @@ def run(request: GenerateRequest, backend: ImageBackend) -> GenerateResult:
     paths = ProjectPaths(project_root=project.root, output_root=project.output_root)
     paths.ensure(request.kind)
 
-    prompt = _build_prompt(project, request.prompt)
+    prompt = _build_prompt(project, request.prompt, request.kind)
     refs = [project.hero_reference, *project.extra_references]
 
     raw_paths = backend.generate(prompt=prompt, refs=refs, n=request.variants)
@@ -111,4 +127,6 @@ def run(request: GenerateRequest, backend: ImageBackend) -> GenerateResult:
             )
         )
 
+    # errors=[] is reserved for future partial-failure paths (e.g. one backend retry that succeeded).
+    # Today run() raises on any hard error; Variant.validation_details carries per-variant check results.
     return GenerateResult(variants=variants, errors=[])

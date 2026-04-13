@@ -65,3 +65,43 @@ def test_generate_runs_pipeline_end_to_end_with_stub(tmp_path: Path) -> None:
         assert variant.validation["grid"] == "pass"
         assert variant.validation["alpha"] == "pass"
         assert variant.passed is True
+
+
+def test_build_prompt_includes_all_three_style_anchor_layers(tmp_path: Path) -> None:
+    """Pins the layered-anchor invariant so a future refactor cannot drop a layer."""
+    from pixel_forge.generate import _build_prompt
+
+    project_dir = _write_project_with_palette_4(tmp_path)
+    project = load_project(project_dir)
+
+    tile_out = _build_prompt(project, "mossy grass", kind="tile")
+
+    # Layer 1: prose style guide
+    assert project.prose.strip() in tile_out
+    # Layer 2: palette hex lines (at least one)
+    assert "#ff0000" in tile_out or "#ffffff" in tile_out or "#000000" in tile_out
+    assert "Palette (use ONLY these colors)" in tile_out
+    # Layer 3: hero reference instruction
+    assert "Reference image attached" in tile_out
+    # Task + output dimension (tile-specific)
+    assert "Task: mossy grass" in tile_out
+    assert f"{project.tile_size}x{project.tile_size}" in tile_out
+    assert "seamless tile" in tile_out
+
+
+def test_build_prompt_non_tile_kind_has_free_form_output_line(tmp_path: Path) -> None:
+    """Characters and props must not be constrained to a single-tile square."""
+    from pixel_forge.generate import _build_prompt
+
+    project_dir = _write_project_with_palette_4(tmp_path)
+    project = load_project(project_dir)
+
+    char_out = _build_prompt(project, "1974 hardware store clerk", kind="character")
+
+    # Still has all three layers
+    assert project.prose.strip() in char_out
+    assert "Palette (use ONLY these colors)" in char_out
+    assert "Reference image attached" in char_out
+    # But the output line is NOT a fixed NxN square
+    assert f"{project.tile_size}x{project.tile_size}" not in char_out
+    assert "sized to the subject" in char_out

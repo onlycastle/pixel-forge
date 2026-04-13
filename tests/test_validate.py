@@ -72,3 +72,38 @@ def test_check_alpha_warn_when_semi_transparent_pixel_present() -> None:
     result = check_alpha(img)
 
     assert result.status == "warn"
+
+
+def test_check_palette_tolerance_allows_some_off_palette() -> None:
+    palette = [(0, 0, 0), (255, 255, 255)]
+    img = Image.new("RGBA", (4, 4), (255, 255, 255, 255))
+    # Stamp 3 off-palette pixels
+    img.putpixel((0, 0), (255, 0, 0, 255))
+    img.putpixel((1, 0), (0, 255, 0, 255))
+    img.putpixel((2, 0), (0, 0, 255, 255))
+
+    # Tolerance of 5 accepts all 3 off-palette pixels
+    result = check_palette(img, palette, max_off_palette=5)
+
+    assert result.status == "pass"
+    assert result.details["off_palette_count"] == 3
+
+
+def test_check_grid_fail_on_non_multiple_height() -> None:
+    img = Image.new("RGBA", (16, 18), (0, 0, 0, 255))
+
+    result = check_grid(img, tile_size=16)
+
+    assert result.status == "fail"
+    assert "height" in result.details["reason"]
+
+
+def test_check_alpha_reports_semi_transparent_count_in_details() -> None:
+    img = Image.new("RGBA", (4, 4), (0, 0, 0, 0))
+    img.putpixel((0, 0), (255, 255, 255, 100))
+    img.putpixel((1, 1), (255, 255, 255, 200))
+
+    result = check_alpha(img)
+
+    assert result.status == "warn"
+    assert result.details["semi_transparent_pixels"] == 2

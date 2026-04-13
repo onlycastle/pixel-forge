@@ -9,7 +9,7 @@ version differences can rewrite PNG byte streams (compression level, IDAT
 chunking, metadata) even when pixel content is identical. If you DO re-run
 this on a different Pillow version, you MUST also update every byte-compare
 assertion in the test suite. The fixtures were originally generated on
-Pillow 12.1.1.
+Pillow 12.2.0.
 """
 from pathlib import Path
 

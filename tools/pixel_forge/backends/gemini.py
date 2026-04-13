@@ -29,7 +29,13 @@ class GeminiBackend:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         model = genai.GenerativeModel(self.model_name)
-        ref_images = [Image.open(p) for p in refs]
+        # Eagerly load ref images into memory so file handles close immediately
+        # and all N variants see byte-identical ref data.
+        ref_images: list[Image.Image] = []
+        for p in refs:
+            with Image.open(p) as im:
+                im.load()
+                ref_images.append(im.copy())
 
         paths: list[Path] = []
         for i in range(n):

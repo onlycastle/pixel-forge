@@ -66,7 +66,6 @@ def test_cli_generate_returns_json_summary(tmp_path: Path) -> None:
             "stub",
             "--stub-template",
             "tests/fixtures/good-tile.png",
-            "--output-json",
         ],
         capture_output=True,
         text=True,

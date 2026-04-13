@@ -19,7 +19,14 @@ def _cmd_generate(args: argparse.Namespace) -> int:
         print(json.dumps({"error": str(err)}), file=sys.stderr)
         return 2
 
-    if args.backend == "stub":
+    # CLI flags override project.toml when explicitly passed; otherwise the
+    # project's configured defaults win.
+    effective_backend = args.backend or project.backend
+    effective_variants = (
+        args.variants if args.variants is not None else project.variants_per_prompt
+    )
+
+    if effective_backend == "stub":
         if not args.stub_template:
             print(
                 json.dumps({"error": "--stub-template required when backend=stub"}),
@@ -30,12 +37,12 @@ def _cmd_generate(args: argparse.Namespace) -> int:
             template_path=Path(args.stub_template).resolve(),
             output_dir=project_dir / "out" / "_raw",
         )
-    elif args.backend == "gemini":
+    elif effective_backend == "gemini":
         from pixel_forge.backends.gemini import GeminiBackend
 
         backend = GeminiBackend(output_dir=project_dir / "out" / "_raw")
     else:
-        print(json.dumps({"error": f"unknown backend: {args.backend}"}), file=sys.stderr)
+        print(json.dumps({"error": f"unknown backend: {effective_backend}"}), file=sys.stderr)
         return 2
 
     # Carry-forward from Task 10 review: run() raises on hard errors. Wrap it
@@ -46,7 +53,7 @@ def _cmd_generate(args: argparse.Namespace) -> int:
                 project=project,
                 kind=args.kind,
                 prompt=args.prompt,
-                variants=args.variants,
+                variants=effective_variants,
             ),
             backend=backend,
         )
@@ -85,10 +92,9 @@ def build_parser() -> argparse.ArgumentParser:
     gen.add_argument("--project", required=True)
     gen.add_argument("--kind", choices=["tile", "prop", "character"], required=True)
     gen.add_argument("--prompt", required=True)
-    gen.add_argument("--variants", type=int, default=4)
-    gen.add_argument("--backend", choices=["gemini", "stub"], default="gemini")
+    gen.add_argument("--variants", type=int, default=None)
+    gen.add_argument("--backend", choices=["gemini", "stub"], default=None)
     gen.add_argument("--stub-template", help="Path to a PNG (only with --backend stub)")
-    gen.add_argument("--output-json", action="store_true")
     gen.set_defaults(func=_cmd_generate)
 
     return parser

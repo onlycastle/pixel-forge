@@ -7,10 +7,13 @@ import shutil
 import sys
 from pathlib import Path
 
+from PIL import Image as _PILImage
+
 from pixel_forge.backends.stub import StubBackend
 from pixel_forge.generate import GenerateRequest, run
 from pixel_forge.paths import KIND_TO_SUBDIR, REJECTED_SUBDIR
 from pixel_forge.project import ProjectConfigError, load_project
+from pixel_forge.validate import check_alpha, check_grid, check_palette
 
 
 PROJECT_TOML_TEMPLATE = """[project]
@@ -91,6 +94,51 @@ def _cmd_new_project(args: argparse.Namespace) -> int:
             }
         )
     )
+    return 0
+
+
+def _cmd_validate(args: argparse.Namespace) -> int:
+    projects_root = Path(args.projects_root).resolve()
+    try:
+        project = load_project(projects_root / args.project)
+    except ProjectConfigError as err:
+        print(json.dumps({"error": str(err)}), file=sys.stderr)
+        return 2
+
+    img_path = Path(args.path).resolve()
+    if not img_path.exists():
+        print(json.dumps({"error": f"image not found: {img_path}"}), file=sys.stderr)
+        return 2
+
+    try:
+        with _PILImage.open(img_path) as img:
+            img.load()
+            palette_result = check_palette(
+                img, project.palette, project.max_off_palette_pixels
+            )
+            grid_result = check_grid(img, project.tile_size)
+            alpha_result = check_alpha(img)
+    except Exception as err:  # noqa: BLE001 - top-level boundary
+        print(
+            json.dumps({"error": f"{type(err).__name__}: {err}"}),
+            file=sys.stderr,
+        )
+        return 3
+
+    payload = {
+        "path": str(img_path),
+        "validation": {
+            "palette": palette_result.status,
+            "grid": grid_result.status,
+            "alpha": alpha_result.status,
+        },
+        "details": {
+            "palette": palette_result.details,
+            "grid": grid_result.details,
+            "alpha": alpha_result.details,
+        },
+    }
+    print(json.dumps(payload))
     return 0
 
 
@@ -240,6 +288,12 @@ def build_parser() -> argparse.ArgumentParser:
     np.add_argument("--name", required=True)
     np.add_argument("--tile-size", type=int, default=16)
     np.set_defaults(func=_cmd_new_project)
+
+    val = sub.add_parser("validate", help="Validate an existing PNG against a project")
+    val.add_argument("--projects-root", default="projects")
+    val.add_argument("--project", required=True)
+    val.add_argument("--path", required=True)
+    val.set_defaults(func=_cmd_validate)
 
     return parser
 

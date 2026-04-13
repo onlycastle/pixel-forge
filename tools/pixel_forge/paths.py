@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+REJECTED_SUBDIR = "_rejected"
+
 KIND_TO_SUBDIR = {
     "tile": "tiles",
     "prop": "props",
@@ -25,7 +27,7 @@ class ProjectPaths:
         return self._out() / KIND_TO_SUBDIR[kind]
 
     def rejected_dir(self, kind: str) -> Path:
-        return self.kind_dir(kind) / "_rejected"
+        return self.kind_dir(kind) / REJECTED_SUBDIR
 
     def ensure(self, kind: str) -> None:
         self.kind_dir(kind).mkdir(parents=True, exist_ok=True)

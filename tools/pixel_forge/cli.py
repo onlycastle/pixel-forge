@@ -9,6 +9,7 @@ from pathlib import Path
 
 from pixel_forge.backends.stub import StubBackend
 from pixel_forge.generate import GenerateRequest, run
+from pixel_forge.paths import REJECTED_SUBDIR
 from pixel_forge.project import ProjectConfigError, load_project
 
 
@@ -92,33 +93,44 @@ def _cmd_promote(args: argparse.Namespace) -> int:
         return 2
 
     tiles_dir = variant_path.parent
-    rejected_root = tiles_dir / "_rejected"
-    rejected_root.mkdir(parents=True, exist_ok=True)
 
     match = re.match(r"(.+)-(\d{8}-\d{6})-v\d+\.png$", variant_path.name)
     if not match:
         print(
             json.dumps(
-                {"error": f"filename does not match <base>-<timestamp>-v<n>.png pattern"}
+                {"error": "filename does not match <base>-<timestamp>-v<n>.png pattern"}
             ),
             file=sys.stderr,
         )
         return 2
     _, timestamp = match.groups()
 
-    siblings = sorted(tiles_dir.glob(f"*-{timestamp}-v*.png"))
-    reject_bucket = rejected_root / timestamp
-    reject_bucket.mkdir(parents=True, exist_ok=True)
+    canonical_path: Path | None = None
+    reject_bucket: Path | None = None
+    try:
+        rejected_root = tiles_dir / REJECTED_SUBDIR
+        rejected_root.mkdir(parents=True, exist_ok=True)
 
-    canonical_path = tiles_dir / f"{args.canonical_name}.png"
-    shutil.copyfile(variant_path, canonical_path)
+        siblings = sorted(tiles_dir.glob(f"*-{timestamp}-v*.png"))
+        reject_bucket = rejected_root / timestamp
+        reject_bucket.mkdir(parents=True, exist_ok=True)
 
-    for sibling in siblings:
-        if sibling == variant_path:
-            sibling.unlink()
-        else:
-            sibling.rename(reject_bucket / sibling.name)
+        canonical_path = tiles_dir / f"{args.canonical_name}.png"
+        shutil.copyfile(variant_path, canonical_path)
 
+        for sibling in siblings:
+            if sibling == variant_path:
+                sibling.unlink()
+            else:
+                sibling.rename(reject_bucket / sibling.name)
+    except Exception as err:  # noqa: BLE001 - top-level boundary
+        print(
+            json.dumps({"error": f"{type(err).__name__}: {err}"}),
+            file=sys.stderr,
+        )
+        return 3
+
+    assert canonical_path is not None and reject_bucket is not None
     print(json.dumps({"canonical": str(canonical_path), "rejected": str(reject_bucket)}))
     return 0
 

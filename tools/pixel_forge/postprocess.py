@@ -40,3 +40,18 @@ def quantize_to_palette(
             )
             pixels[x, y] = (best[0], best[1], best[2], a)
     return rgba
+
+
+def snap_to_grid(img: Image.Image, tile_size: int) -> Image.Image:
+    """Resize the image so width and height are multiples of tile_size.
+
+    Rounds each dimension to the nearest multiple, with a minimum of one tile.
+    Uses nearest-neighbor so pixel art stays crisp.
+    """
+    def _snap(value: int) -> int:
+        return max(tile_size, round(value / tile_size) * tile_size)
+
+    target = (_snap(img.width), _snap(img.height))
+    if target == img.size:
+        return img
+    return img.resize(target, Image.Resampling.NEAREST)

@@ -1,6 +1,6 @@
 from PIL import Image
 
-from pixel_forge.postprocess import ensure_alpha, quantize_to_palette
+from pixel_forge.postprocess import ensure_alpha, quantize_to_palette, snap_to_grid
 
 
 def test_ensure_alpha_converts_rgb_to_rgba() -> None:
@@ -59,3 +59,19 @@ def test_quantize_preserves_exact_matches() -> None:
     result = quantize_to_palette(img, palette)
 
     assert result.getpixel((0, 0)) == (255, 255, 255, 255)
+
+
+def test_snap_to_grid_resizes_to_nearest_multiple() -> None:
+    img = Image.new("RGBA", (18, 14), (255, 0, 0, 255))
+
+    result = snap_to_grid(img, tile_size=16)
+
+    assert result.size == (16, 16)
+
+
+def test_snap_to_grid_passthrough_when_already_multiple() -> None:
+    img = Image.new("RGBA", (32, 16), (255, 0, 0, 255))
+
+    result = snap_to_grid(img, tile_size=16)
+
+    assert result.size == (32, 16)

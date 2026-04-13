@@ -22,3 +22,15 @@ def test_ensure_alpha_snaps_semi_transparent_edges_to_fully_transparent() -> Non
 
     assert result.getpixel((0, 0)) == (0, 0, 0, 0)
     assert result.getpixel((1, 1)) == (255, 255, 255, 255)
+
+
+def test_ensure_alpha_keeps_pixel_exactly_at_threshold() -> None:
+    """Pins the `<` (not `<=`) comparison so downstream tasks can rely on it."""
+    img = Image.new("RGBA", (2, 2), (0, 0, 0, 0))
+    img.putpixel((0, 0), (10, 20, 30, 220))  # exactly at threshold, must stay
+    img.putpixel((1, 0), (10, 20, 30, 219))  # one below, must drop
+
+    result = ensure_alpha(img, alpha_threshold=220)
+
+    assert result.getpixel((0, 0)) == (10, 20, 30, 220)
+    assert result.getpixel((1, 0)) == (0, 0, 0, 0)

@@ -23,10 +23,7 @@ class Project:
 
     backend: str
     variants_per_prompt: int
-    max_retries: int
 
-    enforce_palette: bool
-    enforce_grid: bool
     max_off_palette_pixels: int
 
 
@@ -88,9 +85,6 @@ def load_project(project_root: Path) -> Project:
             extra_references=extra_refs,
             backend=generation_tbl.get("backend", "gemini"),
             variants_per_prompt=int(generation_tbl.get("variants_per_prompt", 4)),
-            max_retries=int(generation_tbl.get("max_retries", 2)),
-            enforce_palette=bool(validation_tbl.get("enforce_palette", True)),
-            enforce_grid=bool(validation_tbl.get("enforce_grid", True)),
             max_off_palette_pixels=int(validation_tbl.get("max_off_palette_pixels", 0)),
         )
     except KeyError as err:

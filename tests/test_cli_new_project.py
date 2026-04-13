@@ -44,4 +44,4 @@ def test_cli_new_project_scaffolds_project_dir(tmp_path: Path) -> None:
     assert parsed["project"]["name"] == "my-game"
     assert parsed["project"]["tile_size"] == 16
     assert parsed["generation"]["backend"] == "gemini"
-    assert parsed["validation"]["enforce_palette"] is True
+    assert parsed["validation"]["max_off_palette_pixels"] == 0

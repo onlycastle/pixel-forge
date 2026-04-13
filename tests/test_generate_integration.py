@@ -31,11 +31,8 @@ extra_references = []
 [generation]
 backend = "stub"
 variants_per_prompt = 3
-max_retries = 0
 
 [validation]
-enforce_palette = true
-enforce_grid = true
 max_off_palette_pixels = 0
 """
     )

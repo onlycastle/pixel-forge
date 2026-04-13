@@ -12,9 +12,6 @@ extra_references = []
 [generation]
 backend = "gemini"
 variants_per_prompt = 4
-max_retries = 2
 
 [validation]
-enforce_palette = true
-enforce_grid = true
 max_off_palette_pixels = 0

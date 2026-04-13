@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -83,6 +85,44 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_promote(args: argparse.Namespace) -> int:
+    variant_path = Path(args.path).resolve()
+    if not variant_path.exists():
+        print(json.dumps({"error": f"path not found: {variant_path}"}), file=sys.stderr)
+        return 2
+
+    tiles_dir = variant_path.parent
+    rejected_root = tiles_dir / "_rejected"
+    rejected_root.mkdir(parents=True, exist_ok=True)
+
+    match = re.match(r"(.+)-(\d{8}-\d{6})-v\d+\.png$", variant_path.name)
+    if not match:
+        print(
+            json.dumps(
+                {"error": f"filename does not match <base>-<timestamp>-v<n>.png pattern"}
+            ),
+            file=sys.stderr,
+        )
+        return 2
+    _, timestamp = match.groups()
+
+    siblings = sorted(tiles_dir.glob(f"*-{timestamp}-v*.png"))
+    reject_bucket = rejected_root / timestamp
+    reject_bucket.mkdir(parents=True, exist_ok=True)
+
+    canonical_path = tiles_dir / f"{args.canonical_name}.png"
+    shutil.copyfile(variant_path, canonical_path)
+
+    for sibling in siblings:
+        if sibling == variant_path:
+            sibling.unlink()
+        else:
+            sibling.rename(reject_bucket / sibling.name)
+
+    print(json.dumps({"canonical": str(canonical_path), "rejected": str(reject_bucket)}))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="pixel_forge")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -96,6 +136,11 @@ def build_parser() -> argparse.ArgumentParser:
     gen.add_argument("--backend", choices=["gemini", "stub"], default=None)
     gen.add_argument("--stub-template", help="Path to a PNG (only with --backend stub)")
     gen.set_defaults(func=_cmd_generate)
+
+    promote = sub.add_parser("promote", help="Promote a variant to canonical, reject siblings")
+    promote.add_argument("--path", required=True)
+    promote.add_argument("--canonical-name", required=True)
+    promote.set_defaults(func=_cmd_promote)
 
     return parser
 

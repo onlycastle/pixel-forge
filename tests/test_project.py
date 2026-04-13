@@ -81,6 +81,41 @@ def test_load_project_invalid_palette_hex_raises_project_config_error(tmp_path: 
         load_project(project_dir)
 
 
+def test_load_project_without_hero_reference_key_sets_none(tmp_path: Path) -> None:
+    """hero_reference is optional. Omitting it from [style] is valid config
+    and the loaded Project should have hero_reference=None (no reference image
+    will be sent to the backend)."""
+    project_dir = tmp_path / "no-hero"
+    (project_dir / "style").mkdir(parents=True)
+    (project_dir / "style" / "palette.hex").write_text("#000000\n#ffffff\n")
+    (project_dir / "style" / "prose.md").write_text("Text-only style.\n")
+    (project_dir / "project.toml").write_text(
+        """
+[project]
+name = "no-hero"
+tile_size = 16
+output_root = "out"
+
+[style]
+palette = "style/palette.hex"
+prose = "style/prose.md"
+extra_references = []
+
+[generation]
+backend = "gemini"
+variants_per_prompt = 4
+
+[validation]
+max_off_palette_pixels = 0
+"""
+    )
+
+    project = load_project(project_dir)
+
+    assert project.hero_reference is None
+    assert project.name == "no-hero"
+
+
 def test_load_project_missing_name_key_raises_project_config_error(tmp_path: Path) -> None:
     project_dir = _write_project(tmp_path)
     # Rewrite the TOML without the `name` key inside [project]

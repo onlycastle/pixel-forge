@@ -54,10 +54,15 @@ def _build_prompt(project: Project, user_prompt: str, kind: str) -> str:
             "Output: PNG with transparent background, pixel art, sized to the subject. "
             f"Use the project's {project.tile_size}-pixel grid as the unit scale."
         )
+    reference_line = (
+        "Reference image attached: match its line weight, shading, detail density.\n"
+        if project.hero_reference is not None
+        else ""
+    )
     return (
         f"{project.prose}\n"
         f"Palette (use ONLY these colors):\n{palette_lines}\n"
-        "Reference image attached: match its line weight, shading, detail density.\n"
+        f"{reference_line}"
         f"Task: {user_prompt}\n"
         f"{output_line}\n"
     )
@@ -73,7 +78,10 @@ def run(request: GenerateRequest, backend: ImageBackend) -> GenerateResult:
     paths.ensure(request.kind)
 
     prompt = _build_prompt(project, request.prompt, request.kind)
-    refs = [project.hero_reference, *project.extra_references]
+    refs: list[Path] = []
+    if project.hero_reference is not None:
+        refs.append(project.hero_reference)
+    refs.extend(project.extra_references)
 
     raw_paths = backend.generate(prompt=prompt, refs=refs, n=request.variants)
 

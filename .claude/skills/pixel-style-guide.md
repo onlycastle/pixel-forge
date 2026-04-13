@@ -14,7 +14,7 @@ Projects live at `projects/<name>/`. Each has:
 - `project.toml` — config (tile size, backend, validation rules)
 - `style/palette.hex` — one hex color per line, the **only** colors allowed in output
 - `style/prose.md` — the human-readable style guide, always prepended to generation prompts
-- `style/reference/hero.png` — the canonical visual anchor, always attached to generation requests
+- `style/reference/hero.png` — **optional** canonical visual anchor, attached to generation requests when the `hero_reference` key is set in `project.toml`. Projects without one still work; cross-variant consistency is weaker.
 - `style/reference/extras/*.png` — optional additional references
 - `out/{tiles,props,characters,maps}/` — where generated assets land; `_rejected/` holds variants the user didn't pick
 
@@ -22,7 +22,7 @@ Before running any generation, confirm the target project exists. If it doesn't,
 
 ## The generation contract
 
-All three style layers are always loaded into every generation. No exceptions. This is enforced by `tools/pixel_forge/generate.py` — you never build the prompt yourself, you just call the CLI.
+Palette and prose are always loaded into every generation — no exceptions. The hero reference is loaded when the project declares one. This is enforced by `tools/pixel_forge/generate.py` — you never build the prompt yourself, you just call the CLI.
 
 ## The N-of-K loop
 

@@ -24,7 +24,11 @@ output_root = "out"
 [style]
 palette = "style/palette.hex"
 prose = "style/prose.md"
-hero_reference = "style/reference/hero.png"
+# hero_reference is optional. Uncomment and point at a PNG to anchor
+# generated assets to a canonical visual reference. Without it, the
+# prose + palette still constrain the style, but cross-variant
+# consistency is weaker.
+# hero_reference = "style/reference/hero.png"
 extra_references = []
 
 [generation]

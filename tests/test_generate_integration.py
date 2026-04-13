@@ -102,3 +102,87 @@ def test_build_prompt_non_tile_kind_has_free_form_output_line(tmp_path: Path) ->
     # But the output line is NOT a fixed NxN square
     assert f"{project.tile_size}x{project.tile_size}" not in char_out
     assert "sized to the subject" in char_out
+
+
+def _write_project_without_hero(tmp_path: Path) -> Path:
+    """Bootstrap a project with the hero_reference key OMITTED from [style]."""
+    project_dir = tmp_path / "no-hero"
+    (project_dir / "style").mkdir(parents=True)
+    (project_dir / "style" / "palette.hex").write_text(
+        Path("tests/fixtures/palette-4.hex").read_text()
+    )
+    (project_dir / "style" / "prose.md").write_text("No-reference style.\n")
+    (project_dir / "project.toml").write_text(
+        """
+[project]
+name = "no-hero"
+tile_size = 16
+output_root = "out"
+
+[style]
+palette = "style/palette.hex"
+prose = "style/prose.md"
+extra_references = []
+
+[generation]
+backend = "stub"
+variants_per_prompt = 2
+
+[validation]
+max_off_palette_pixels = 0
+"""
+    )
+    return project_dir
+
+
+def test_generate_runs_without_hero_reference(tmp_path: Path) -> None:
+    """A project with no hero_reference key must still produce valid variants.
+    The backend receives an empty refs list and the prompt omits the reference
+    instruction line."""
+    project_dir = _write_project_without_hero(tmp_path)
+    project = load_project(project_dir)
+    assert project.hero_reference is None
+
+    # Record what the backend receives so we can assert refs is empty.
+    captured: dict = {}
+
+    class RecordingStub(StubBackend):
+        def generate(self, prompt, refs, n):
+            captured["prompt"] = prompt
+            captured["refs"] = list(refs)
+            return super().generate(prompt, refs, n)
+
+    backend = RecordingStub(
+        template_path=Path("tests/fixtures/good-tile.png").resolve(),
+        output_dir=tmp_path / "raw",
+    )
+
+    result = run(
+        GenerateRequest(project=project, kind="tile", prompt="grass", variants=2),
+        backend=backend,
+    )
+
+    assert captured["refs"] == []
+    assert "Reference image attached" not in captured["prompt"]
+    # Pipeline still produces valid variants
+    assert len(result.variants) == 2
+    for variant in result.variants:
+        assert variant.passed is True
+
+
+def test_build_prompt_omits_reference_line_when_hero_is_none(tmp_path: Path) -> None:
+    """When Project.hero_reference is None, _build_prompt must not claim a
+    reference image is attached."""
+    from pixel_forge.generate import _build_prompt
+
+    project_dir = _write_project_without_hero(tmp_path)
+    project = load_project(project_dir)
+
+    out = _build_prompt(project, "grass", kind="tile")
+
+    assert "Reference image attached" not in out
+    # Other layers still present
+    assert project.prose.strip() in out
+    assert "Palette (use ONLY these colors)" in out
+    assert "Task: grass" in out
+    assert "seamless tile" in out

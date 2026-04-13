@@ -18,7 +18,7 @@ class Project:
 
     palette: list[tuple[int, int, int]]
     prose: str
-    hero_reference: Path
+    hero_reference: Path | None
     extra_references: list[Path]
 
     backend: str
@@ -68,9 +68,15 @@ def load_project(project_root: Path) -> Project:
             raise ProjectConfigError(f"prose file missing: {prose_path}")
         prose = prose_path.read_text(encoding="utf-8")
 
-        hero_path = project_root / style_tbl["hero_reference"]
-        if not hero_path.exists():
-            raise ProjectConfigError(f"hero reference missing: {hero_path}")
+        # hero_reference is optional. If the key is absent from [style], we
+        # pass zero reference images to the backend. If the key is present,
+        # the file must exist (declaring a reference is a promise).
+        hero_ref_value = style_tbl.get("hero_reference")
+        hero_path: Path | None = None
+        if hero_ref_value:
+            hero_path = project_root / hero_ref_value
+            if not hero_path.exists():
+                raise ProjectConfigError(f"hero reference missing: {hero_path}")
 
         extra_refs = [project_root / p for p in style_tbl.get("extra_references", [])]
 

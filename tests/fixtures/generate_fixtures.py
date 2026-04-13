@@ -2,6 +2,14 @@
 
 Run this once from the repo root: `python tests/fixtures/generate_fixtures.py`
 The outputs are committed to the repo.
+
+WARNING — DO NOT re-run this script casually. Downstream tests (see Task 8
+in the v1 plan) byte-compare the committed PNGs via `read_bytes() ==`. Pillow
+version differences can rewrite PNG byte streams (compression level, IDAT
+chunking, metadata) even when pixel content is identical. If you DO re-run
+this on a different Pillow version, you MUST also update every byte-compare
+assertion in the test suite. The fixtures were originally generated on
+Pillow 12.1.1.
 """
 from pathlib import Path
 

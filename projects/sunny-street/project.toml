@@ -1,0 +1,20 @@
+[project]
+name = "sunny-street"
+tile_size = 16
+output_root = "out"
+
+[style]
+palette = "style/palette.hex"
+prose = "style/prose.md"
+hero_reference = "style/reference/hero.png"
+extra_references = []
+
+[generation]
+backend = "gemini"
+variants_per_prompt = 4
+max_retries = 2
+
+[validation]
+enforce_palette = true
+enforce_grid = true
+max_off_palette_pixels = 0

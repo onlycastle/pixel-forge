@@ -8,11 +8,10 @@ test:
 
 smoke:
 	python -m pixel_forge generate \
-		--project smoke-test \
+		--project sunny-street \
 		--kind tile \
 		--prompt "solid red square" \
-		--variants 2 \
-		--output-json
+		--variants 2
 
 lint:
 	python -m compileall tools/pixel_forge

@@ -17,3 +17,12 @@ See `docs/2026-04-12-pixel-forge-design.md` in the sunny-street repo for the ful
 - `.claude/skills/` — markdown skills Claude loads to drive the tool
 - `projects/<name>/` — one folder per project with its own style anchor and `out/`
 - `tests/` — pytest unit and integration tests (no real API calls)
+
+## Running tests
+
+```
+source .venv/bin/activate
+pytest -v
+```
+
+Unit and integration tests do not call the Gemini API. They use a stub backend that copies fixture PNGs. To exercise the real Gemini path, set `GEMINI_API_KEY` in `.env` and run `make smoke`.

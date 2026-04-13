@@ -9,8 +9,83 @@ from pathlib import Path
 
 from pixel_forge.backends.stub import StubBackend
 from pixel_forge.generate import GenerateRequest, run
-from pixel_forge.paths import REJECTED_SUBDIR
+from pixel_forge.paths import KIND_TO_SUBDIR, REJECTED_SUBDIR
 from pixel_forge.project import ProjectConfigError, load_project
+
+
+PROJECT_TOML_TEMPLATE = """[project]
+name = "{name}"
+tile_size = {tile_size}
+output_root = "out"
+
+[style]
+palette = "style/palette.hex"
+prose = "style/prose.md"
+hero_reference = "style/reference/hero.png"
+extra_references = []
+
+[generation]
+backend = "gemini"
+variants_per_prompt = 4
+max_retries = 2
+
+[validation]
+enforce_palette = true
+enforce_grid = true
+max_off_palette_pixels = 0
+"""
+
+PALETTE_PLACEHOLDER = """#000000
+#ffffff
+#888888
+"""
+
+PROSE_PLACEHOLDER = """# Style guide
+
+Replace this file with a prose description of your pixel art style.
+Line weight, shading rules, palette rationale, detail density, examples.
+"""
+
+
+def _cmd_new_project(args: argparse.Namespace) -> int:
+    projects_root = Path(args.projects_root).resolve()
+    project_dir = projects_root / args.name
+    if project_dir.exists():
+        print(json.dumps({"error": f"project already exists: {project_dir}"}), file=sys.stderr)
+        return 2
+
+    try:
+        (project_dir / "style" / "reference").mkdir(parents=True)
+        # Iterate KIND_TO_SUBDIR.values() instead of hardcoding the tuple (Task 3 carry-forward).
+        for subdir in KIND_TO_SUBDIR.values():
+            (project_dir / "out" / subdir).mkdir(parents=True)
+            (project_dir / "out" / subdir / REJECTED_SUBDIR).mkdir()
+
+        (project_dir / "project.toml").write_text(
+            PROJECT_TOML_TEMPLATE.format(name=args.name, tile_size=args.tile_size)
+        )
+        (project_dir / "style" / "palette.hex").write_text(PALETTE_PLACEHOLDER)
+        (project_dir / "style" / "prose.md").write_text(PROSE_PLACEHOLDER)
+    except Exception as err:  # noqa: BLE001 - top-level boundary
+        print(
+            json.dumps({"error": f"{type(err).__name__}: {err}"}),
+            file=sys.stderr,
+        )
+        return 3
+
+    print(
+        json.dumps(
+            {
+                "project_dir": str(project_dir),
+                "next_steps": [
+                    "Replace style/palette.hex with your real palette",
+                    "Replace style/prose.md with your style guide",
+                    "Drop a hero reference at style/reference/hero.png",
+                ],
+            }
+        )
+    )
+    return 0
 
 
 def _cmd_generate(args: argparse.Namespace) -> int:
@@ -153,6 +228,12 @@ def build_parser() -> argparse.ArgumentParser:
     promote.add_argument("--path", required=True)
     promote.add_argument("--canonical-name", required=True)
     promote.set_defaults(func=_cmd_promote)
+
+    np = sub.add_parser("new-project", help="Create a new project scaffolding")
+    np.add_argument("--projects-root", default="projects")
+    np.add_argument("--name", required=True)
+    np.add_argument("--tile-size", type=int, default=16)
+    np.set_defaults(func=_cmd_new_project)
 
     return parser
 

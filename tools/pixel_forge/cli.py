@@ -35,7 +35,10 @@ enforce_grid = true
 max_off_palette_pixels = 0
 """
 
-PALETTE_PLACEHOLDER = """#000000
+PALETTE_PLACEHOLDER = """#! Replace these placeholder colors with your real palette before running generate.
+#! With enforce_palette=true and max_off_palette_pixels=0 (the default), every
+#! generated variant will fail validation until this file holds your real palette.
+#000000
 #ffffff
 #888888
 """
@@ -67,6 +70,9 @@ def _cmd_new_project(args: argparse.Namespace) -> int:
         (project_dir / "style" / "palette.hex").write_text(PALETTE_PLACEHOLDER)
         (project_dir / "style" / "prose.md").write_text(PROSE_PLACEHOLDER)
     except Exception as err:  # noqa: BLE001 - top-level boundary
+        # Clean up partial state so a retry with the same --name is not
+        # blocked by "project already exists" on a corrupted directory.
+        shutil.rmtree(project_dir, ignore_errors=True)
         print(
             json.dumps({"error": f"{type(err).__name__}: {err}"}),
             file=sys.stderr,

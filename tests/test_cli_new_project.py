@@ -37,3 +37,11 @@ def test_cli_new_project_scaffolds_project_dir(tmp_path: Path) -> None:
     toml_text = (project_dir / "project.toml").read_text()
     assert 'name = "my-game"' in toml_text
     assert "tile_size = 16" in toml_text
+
+    # Round-trip: the generated project.toml must actually parse as TOML.
+    import tomllib
+    parsed = tomllib.loads((project_dir / "project.toml").read_text())
+    assert parsed["project"]["name"] == "my-game"
+    assert parsed["project"]["tile_size"] == 16
+    assert parsed["generation"]["backend"] == "gemini"
+    assert parsed["validation"]["enforce_palette"] is True

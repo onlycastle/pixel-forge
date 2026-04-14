@@ -12,6 +12,9 @@ dependencies = [
     "google-generativeai>=0.7",
 ]
 
+[project.scripts]
+pf = "pixel_forge.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",

@@ -56,6 +56,14 @@ class SheetProfile:
     label_mask_box: tuple[int, int, int, int]  # mask coords on reference
     direction_order: tuple[str, ...] = ("right", "up", "left", "down")
     locomotion_rows: dict[str, int] | None = None
+    # Additional STYLE reference images (relative paths under the
+    # sunny-street public/ tree) that get sent to Gemini alongside the
+    # primary layout reference. More references = richer style signal
+    # (different skin tones / outfits / hair) so the model sees what
+    # "the right kind of sprite sheet" looks like instead of just one
+    # example. The primary layout reference is passed separately via
+    # SheetRequest.reference_path; these are additive.
+    style_references: tuple[str, ...] = ()
 
 
 # Animal sheet contract (matches sunny-street's livestock24 profile).
@@ -67,17 +75,39 @@ ANIMAL_LIVESTOCK24 = SheetProfile(
     target_rows=4,
     label_mask_box=(0, 0, 120, 24),
     locomotion_rows={"idle": 0, "walk": 1},
+    # Additional 32x32 livestock animals as style anchors. All share
+    # the livestock24 layout so they reinforce the grid + style signal.
+    style_references=(
+        "public/sprites/animals/pig-pink.png",
+        "public/sprites/animals/sheep-white.png",
+    ),
 )
 
-# Townsperson sheet contract (matches sunny-street's premade format).
-# Reference is premade-01.png (32x64 frames, 56x... sheet).
+# Townsperson sheet contract. Target is the top 3 rows of a premade
+# sheet: direction preview + idle + walk = exactly what sunny-street's
+# character-anims.ts currently loads. Target canvas 1792x192 is a
+# 9.3:1 aspect ratio — Gemini honors this ratio iff the reference we
+# send also has it, so `run()` crops the layout reference to this
+# exact canvas before passing it to the model.
 PERSON_PREMADE = SheetProfile(
     id="person-premade",
     target_cell=(32, 64),
     target_cols=56,
-    target_rows=4,
-    label_mask_box=(0, 0, 120, 24),
+    target_rows=3,
+    # premade-01 has no debug label in the top-left (unlike LimeZu's
+    # Modern_Farm sheets), so the mask is a no-op rectangle.
+    label_mask_box=(0, 0, 0, 0),
     locomotion_rows={"preview": 0, "idle": 1, "walk": 2},
+    # Three additional premade sheets act as style anchors. They all
+    # share the exact same layout and pixel-art style; showing Gemini
+    # multiple examples of "this is what a townsperson sprite sheet
+    # looks like" dramatically improves its chances of matching the
+    # style and layout of the output vs a single example.
+    style_references=(
+        "public/sprites/premade-02.png",
+        "public/sprites/premade-04.png",
+        "public/sprites/premade-06.png",
+    ),
 )
 
 
@@ -85,6 +115,21 @@ SHEET_PROFILES: dict[str, SheetProfile] = {
     ANIMAL_LIVESTOCK24.id: ANIMAL_LIVESTOCK24,
     PERSON_PREMADE.id: PERSON_PREMADE,
 }
+
+
+def _style_references_root() -> Path:
+    """Where profile-declared style references are resolved from.
+
+    Defaults to the user's sunny-street checkout (where purchased
+    LimeZu sheets live). Overridable via SUNNY_STREET_ROOT env var for
+    tests that want to point at a different root.
+    """
+    import os
+
+    env = os.environ.get("SUNNY_STREET_ROOT")
+    if env:
+        return Path(env).expanduser()
+    return Path.home() / "projects" / "sunny-street"
 
 
 @dataclass(frozen=True)
@@ -183,20 +228,47 @@ def _build_sheet_prompt(profile: SheetProfile, subject: str) -> str:
     )
 
 
-def _mask_reference_label(
+def _prepare_reference(
     reference_path: Path,
-    label_box: tuple[int, int, int, int],
+    profile: SheetProfile,
 ) -> Image.Image:
-    """Open a reference image and paint over the asset pack's debug label.
+    """Open, crop, and mask the layout reference before sending to Gemini.
 
-    LimeZu sheets ship with a small text annotation (e.g. 'ROW: 4 COL: 24')
-    in the top-left corner. The smoke test proved that Gemini will copy
-    that text verbatim into its output if it is present in the reference.
-    Painting black over the box solves it deterministically.
+    Two things this function does, both load-bearing:
+
+    1. **Crop to the profile's target canvas**. Gemini 2.5 Flash Image
+       preserves the *reference* image's aspect ratio in its output,
+       IGNORING any dimensions mentioned in the prompt. If the caller
+       passes a 1792x1312 premade sheet but the profile targets a
+       1792x192 locomotion band, Gemini would produce 1.37:1 output
+       instead of 9.3:1. Cropping the reference to the exact target
+       canvas makes Gemini honor the shape automatically. For profiles
+       whose reference already matches the target (e.g. animal +
+       duck-brown), this is a no-op.
+
+    2. **Mask the asset pack's debug annotation** (e.g. 'ROW: 4 COL: 24'
+       in LimeZu sheets). The smoke test proved that Gemini copies
+       that text into its output; black-painting the mask box solves
+       it deterministically.
     """
     img = Image.open(reference_path).convert("RGBA")
-    draw = ImageDraw.Draw(img)
-    draw.rectangle(label_box, fill=(0, 0, 0, 255))
+
+    target_w = profile.target_cols * profile.target_cell[0]
+    target_h = profile.target_rows * profile.target_cell[1]
+    if img.size != (target_w, target_h):
+        if img.width < target_w or img.height < target_h:
+            raise ValueError(
+                f"reference {reference_path} is {img.size}, smaller than "
+                f"profile target {(target_w, target_h)} — cannot crop"
+            )
+        # Always crop top-left. For premade-style sheets the top rows
+        # are the locomotion band the profile targets.
+        img = img.crop((0, 0, target_w, target_h))
+
+    x0, y0, x1, y1 = profile.label_mask_box
+    if x1 > x0 and y1 > y0:
+        draw = ImageDraw.Draw(img)
+        draw.rectangle(profile.label_mask_box, fill=(0, 0, 0, 255))
     return img
 
 
@@ -229,9 +301,10 @@ def run(request: SheetRequest) -> SheetResult:
     if not request.reference_path.is_file():
         return SheetResult(variants=[], errors=[f"reference missing: {request.reference_path}"])
 
-    masked_ref = _mask_reference_label(
-        request.reference_path, request.profile.label_mask_box
-    )
+    try:
+        masked_ref = _prepare_reference(request.reference_path, request.profile)
+    except ValueError as err:
+        return SheetResult(variants=[], errors=[str(err)])
 
     backend = GeminiBackend(output_dir=out_dir / "_raw")
     backend.output_dir.mkdir(parents=True, exist_ok=True)
@@ -243,6 +316,27 @@ def run(request: SheetRequest) -> SheetResult:
     masked_ref.save(masked_ref_path)
 
     refs = [masked_ref_path]
+
+    # Style references: extra sheets from the same profile family that
+    # reinforce the layout + style signal. Each one is cropped + masked
+    # through the same pipeline so Gemini sees a consistent set of
+    # "what sprite sheets look like" examples.
+    style_refs_root = _style_references_root()
+    for rel in request.profile.style_references:
+        style_path = style_refs_root / rel
+        if not style_path.is_file():
+            # A missing style ref is non-fatal — the primary layout
+            # reference still carries the contract. Log and skip.
+            print(f"  (style ref missing, skipping: {style_path})")
+            continue
+        try:
+            prepared = _prepare_reference(style_path, request.profile)
+        except ValueError:
+            continue
+        style_out = backend.output_dir / f"_style-ref-{request.profile.id}-{style_path.stem}.png"
+        prepared.save(style_out)
+        refs.append(style_out)
+
     if request.extra_reference is not None:
         if not request.extra_reference.is_file():
             return SheetResult(

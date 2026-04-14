@@ -47,27 +47,46 @@ def _make_grid_png(
 def test_detect_grid_picks_K_matching_expected_rows(tmp_path: Path) -> None:
     # Synthetic 16x4 grid of 128px cells (mimics Gemini's actual output)
     img = Image.new("RGB", (2048, 512), (0, 0, 0))
-    K, cols, rows = detect_grid(img, expected_cols=24, expected_rows=4)
-    # Expected behavior: row count match wins, picks K=128 for 16x4
+    cell_px, cols, rows = detect_grid(img, expected_cols=24, expected_rows=4)
+    # Expected behavior: row count match wins, picks 128x128 for 16x4
     assert rows == 4
-    assert K == 128
+    assert cell_px == (128, 128)
     assert cols == 16
 
 
 def test_detect_grid_handles_perfect_match(tmp_path: Path) -> None:
     img = Image.new("RGB", (24 * 32, 4 * 32), (0, 0, 0))
-    K, cols, rows = detect_grid(img, expected_cols=24, expected_rows=4)
-    assert (K, cols, rows) == (32, 24, 4)
+    cell_px, cols, rows = detect_grid(img, expected_cols=24, expected_rows=4)
+    assert cell_px == (32, 32)
+    assert cols == 24
+    assert rows == 4
 
 
 def test_detect_grid_falls_back_to_gcd_when_no_candidate(tmp_path: Path) -> None:
     # Pathological size: 15x9 doesn't divide evenly by any candidate
     img = Image.new("RGB", (15, 9), (0, 0, 0))
-    K, cols, rows = detect_grid(img, expected_cols=24, expected_rows=4)
+    cell_px, cols, rows = detect_grid(img, expected_cols=24, expected_rows=4)
     # Fallback uses gcd; just verify we got SOMETHING usable, not a crash
-    assert K > 0
+    assert cell_px[0] > 0 and cell_px[1] > 0
     assert cols > 0
     assert rows > 0
+
+
+def test_detect_grid_picks_non_square_for_32x64_target(tmp_path: Path) -> None:
+    # A 2048x512 sheet with target cell 32x64 should pick (Kw,Kh) with 2:1
+    # height:width aspect so characters aren't squashed on resize.
+    img = Image.new("RGB", (2048, 512), (0, 0, 0))
+    cell_px, cols, rows = detect_grid(
+        img,
+        expected_cols=56,
+        expected_rows=3,
+        target_cell=(32, 64),
+    )
+    assert cell_px[1] == cell_px[0] * 2  # aspect preserved
+    # 2048x512 with 2:1 ratio cells → best fit is (64, 128) → 32x4
+    assert cell_px == (64, 128)
+    assert cols == 32
+    assert rows == 4
 
 
 def test_detect_background_picks_corner_color() -> None:

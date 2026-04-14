@@ -66,44 +66,63 @@ def detect_grid(
     img: Image.Image,
     expected_cols: int,
     expected_rows: int,
-) -> tuple[int, int, int]:
-    """Pick (cell_size, cols, rows) that fits the image and is closest to expected.
+    target_cell: tuple[int, int] | None = None,
+) -> tuple[tuple[int, int], int, int]:
+    """Pick (cell_px=(Kw,Kh), cols, rows) that fits the image.
 
-    The heuristic prefers an exact match on the expected row count first
-    (rows are typically more informative — a 4-row contract is a strong
-    signal because the model tends to add cell width but rarely changes
-    row count). Then, among candidates with the closest row count, it
-    picks the one whose col count is also closest to expected.
+    When `target_cell` is non-square (e.g. 32x64 for premade-style
+    characters), we generate (Kw, Kh) candidate pairs that preserve the
+    target aspect ratio — otherwise the heuristic would pick square
+    cells and the extractor would squash characters vertically or
+    horizontally. When `target_cell` is None or square, we fall back to
+    square-cell search for backward compatibility.
 
-    Falls back to gcd(W, H) if no candidate divides both dimensions
-    evenly — a degenerate case that should be rare for image-model output
-    sizes which are always powers/multiples of common cell sizes.
+    Scoring: row-count match dominates (rows are a stronger structural
+    signal than cols because the model usually adjusts cell width before
+    it adjusts row count). Among candidates with matching rows, col
+    count breaks ties.
+
+    Falls back to gcd(W, H) square cells if no candidate divides both
+    dimensions cleanly.
     """
     W, H = img.size
 
-    candidates: list[tuple[int, int, int, int]] = []
-    for K in _CANDIDATE_CELL_SIZES:
-        if W % K != 0 or H % K != 0:
+    candidate_pairs: list[tuple[int, int]] = []
+    if target_cell is not None and target_cell[0] != target_cell[1]:
+        tw, th = target_cell
+        ratio_num, ratio_den = th, tw
+        # Iterate scale factors producing (Kw, Kh) = (s*tw, s*th) style
+        # pairs but allow arbitrary integer scaling of base.
+        for base_w in _CANDIDATE_CELL_SIZES:
+            kh = base_w * ratio_num // ratio_den
+            if base_w * ratio_num % ratio_den != 0:
+                continue
+            candidate_pairs.append((base_w, kh))
+    else:
+        for K in _CANDIDATE_CELL_SIZES:
+            candidate_pairs.append((K, K))
+
+    candidates: list[tuple[int, int, int, int, int]] = []
+    for Kw, Kh in candidate_pairs:
+        if W % Kw != 0 or H % Kh != 0:
             continue
-        cols = W // K
-        rows = H // K
-        # Reject pathological grids (e.g. 1×1 or absurd cell counts)
-        if cols < 1 or rows < 1 or cols > 64 or rows > 64:
+        cols = W // Kw
+        rows = H // Kh
+        if cols < 1 or rows < 1 or cols > 128 or rows > 128:
             continue
         row_err = abs(rows - expected_rows)
         col_err = abs(cols - expected_cols)
-        # Rows weighted heavier — see docstring.
         score = row_err * 100 + col_err
-        candidates.append((score, K, cols, rows))
+        candidates.append((score, Kw, Kh, cols, rows))
 
     if not candidates:
         from math import gcd
         K = gcd(W, H)
-        return (K, W // K, H // K)
+        return ((K, K), W // K, H // K)
 
     candidates.sort()
-    _, K, cols, rows = candidates[0]
-    return (K, cols, rows)
+    _, Kw, Kh, cols, rows = candidates[0]
+    return ((Kw, Kh), cols, rows)
 
 
 def detect_background(img: Image.Image) -> tuple[int, int, int]:
@@ -167,8 +186,11 @@ def extract_sheet(req: ExtractRequest) -> ExtractResult:
     raw_rgb = raw.convert("RGB")
     raw_size = raw_rgb.size
 
-    cell_px, cols, rows = detect_grid(
-        raw_rgb, req.expected_cols, req.expected_rows
+    (cell_w_raw, cell_h_raw), cols, rows = detect_grid(
+        raw_rgb,
+        req.expected_cols,
+        req.expected_rows,
+        target_cell=req.target_cell,
     )
 
     bg = detect_background(raw_rgb)
@@ -182,10 +204,10 @@ def extract_sheet(req: ExtractRequest) -> ExtractResult:
     for r in range(rows):
         for c in range(cols):
             box = (
-                c * cell_px,
-                r * cell_px,
-                (c + 1) * cell_px,
-                (r + 1) * cell_px,
+                c * cell_w_raw,
+                r * cell_h_raw,
+                (c + 1) * cell_w_raw,
+                (r + 1) * cell_h_raw,
             )
             cell = cleaned.crop(box)
             cell_resized = cell.resize(
@@ -197,7 +219,7 @@ def extract_sheet(req: ExtractRequest) -> ExtractResult:
         image=final,
         detected_cols=cols,
         detected_rows=rows,
-        detected_cell_size=(cell_px, cell_px),
+        detected_cell_size=(cell_w_raw, cell_h_raw),
         background_color=bg,
         raw_size=raw_size,
         final_size=(final_w, final_h),

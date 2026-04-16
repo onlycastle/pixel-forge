@@ -228,37 +228,49 @@ class GeminiCharacterBackend:
         out.write_bytes(data)
         return PortraitResult(path=out)
 
+    def _generate_one_strip(
+        self, direction: str, prompt_text: str, ref_img: Image.Image | None,
+    ) -> tuple[str, Image.Image]:
+        """Generate one direction's strip. Returns (direction, image)."""
+        ref_cell = ref_img
+        if ref_img is not None:
+            dir_idx = DIRECTIONS.index(direction)
+            rw, rh = ref_img.size
+            cell_w_ref = rw // len(DIRECTIONS)
+            ref_cell = ref_img.crop(
+                (dir_idx * cell_w_ref, 0, (dir_idx + 1) * cell_w_ref, rh)
+            )
+
+        facing = FACING_DEFS[direction]
+        prompt = (
+            f"Generate a pixel-art sprite sheet showing a character "
+            f"walking. {facing} Character: {prompt_text}.\n\n"
+            f"The sheet should be a grid: 6 columns wide and 3 rows tall.\n"
+            f"Row 1: standing preview. Row 2: idle animation frames. "
+            f"Row 3: walk-cycle animation frames.\n\n"
+            f"Style: pixel art. Crisp edges. No anti-aliasing. "
+            f"Dark outline on the silhouette. Solid neutral gray background. "
+            f"No borders, no text, no labels."
+        )
+        data = self._call(prompt, ref_cell, aspect="1:1")
+        return direction, Image.open(io.BytesIO(data)).convert("RGBA")
+
     def generate_walking_sheet(self, req: WalkingSheetRequest) -> WalkingSheetResult:
         ref_img = None
         if req.reference and req.reference.is_file():
             ref_img = Image.open(req.reference).convert("RGBA")
 
+        # Run 4 direction calls in parallel for ~4× speedup.
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         strips: dict[str, Image.Image] = {}
-        for direction in DIRECTIONS:
-            # Optionally crop per-direction reference cell
-            ref_cell = ref_img
-            if ref_img is not None:
-                dir_idx = DIRECTIONS.index(direction)
-                rw, rh = ref_img.size
-                cell_w_ref = rw // len(DIRECTIONS)
-                ref_cell = ref_img.crop(
-                    (dir_idx * cell_w_ref, 0, (dir_idx + 1) * cell_w_ref, rh)
-                )
-
-            facing = FACING_DEFS[direction]
-            prompt = (
-                f"Generate a pixel-art sprite sheet showing a character "
-                f"walking. {facing} Character: {req.prompt}.\n\n"
-                f"The sheet should be a grid: 6 columns wide and 3 rows tall.\n"
-                f"Row 1: standing preview. Row 2: idle animation frames. "
-                f"Row 3: walk-cycle animation frames.\n\n"
-                f"Style: pixel art. Crisp edges. No anti-aliasing. "
-                f"Dark outline on the silhouette. Solid neutral gray background. "
-                f"No borders, no text, no labels."
-            )
-            data = self._call(prompt, ref_cell, aspect="1:1")
-            strip_img = Image.open(io.BytesIO(data)).convert("RGBA")
-            strips[direction] = strip_img
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {
+                pool.submit(self._generate_one_strip, d, req.prompt, ref_img): d
+                for d in DIRECTIONS
+            }
+            for future in as_completed(futures):
+                direction, strip_img = future.result()
+                strips[direction] = strip_img
 
         sheet = _stitch_direction_strips(strips)
         out = req.output_dir / "walk.png"

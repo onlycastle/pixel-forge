@@ -951,6 +951,15 @@ def _cmd_bundle(args: argparse.Namespace) -> int:
         skip_walking=bool(args.skip_walking),
     )
 
+    # --- Check if we should use the new CharacterBackend pipeline --------
+    # The new pipeline uses the google-genai SDK (3.1 Flash) or PixelLab
+    # with pipe-specific methods instead of the legacy single generate().
+    _use_new_backend = (
+        asset_type == "person"
+        and args.backend in ("gemini", "pixellab")
+        and args.backend != "stub"
+    )
+
     # --- Per-variant loop: pipes 1 + 2 fresh, pipe 3 copied ------------
     bundle_payloads: list[dict] = []
     for v_idx, bdir in enumerate(variant_dirs):
@@ -977,57 +986,65 @@ def _cmd_bundle(args: argparse.Namespace) -> int:
 
         # Pipe 1: portrait
         portrait_rel: str | None = None
-        # Absolute path to the portrait that will feed pipes 2 and 3 as
-        # the identity anchor. Resolved either from a freshly generated
-        # portrait (pipe 1) or from a pre-existing portrait on disk
-        # (reuse case under --skip-portrait). Stays None if portrait
-        # was both skipped AND absent — in that case the ordering
-        # guard above would already have returned, so it only stays
-        # None here when pipe 2 and pipe 3 are both also skipped.
         portrait_identity_path: Path | None = None
         if not args.skip_portrait:
             _emit_progress("pipe_start", variant=v_idx + 1, pipe="portrait")
             try:
-                backend = _get_backend()
-                result = run(
-                    GenerateRequest(
-                        project=project,
-                        kind="character",
+                if _use_new_backend:
+                    from pixel_forge.backends import resolve_character_backend
+                    from pixel_forge.backends.character import PortraitRequest
+                    cb = resolve_character_backend(args.backend, bdir)
+                    ref_path = None
+                    if hasattr(args, "walking_reference") and args.walking_reference:
+                        ref_path = Path(args.walking_reference).expanduser().resolve()
+                    pr = cb.generate_portrait(PortraitRequest(
                         prompt=args.prompt,
-                        variants=1,
-                        footprint=None,
-                        sheet=None,
-                        anchor=None,
-                        extra_reference=None,
-                    ),
-                    backend=backend,
-                )
-                if not result.variants:
-                    raise RuntimeError("generate produced 0 variants")
-                src = Path(result.variants[0].path)
-                dst = bdir / "portrait.png"
-                shutil.copyfile(src, dst)
-                portrait_rel = "portrait.png"
-                portrait_identity_path = dst
-                pipes_report["portrait"] = {"ok": True, "path": str(dst)}
-                pipe_usage["portrait"] = result.usage
-                _emit_progress(
-                    "pipe_done",
-                    variant=v_idx + 1,
-                    pipe="portrait",
-                    ok=True,
-                    usage=_usage_as_dict(result.usage),
-                )
+                        reference=ref_path,
+                        output_dir=bdir,
+                    ))
+                    dst = pr.path
+                    portrait_rel = dst.name
+                    portrait_identity_path = dst
+                    pipes_report["portrait"] = {"ok": True, "path": str(dst)}
+                    _emit_progress(
+                        "pipe_done", variant=v_idx + 1, pipe="portrait",
+                        ok=True, usage={"model": "gemini-3.1-flash-image-preview"},
+                    )
+                else:
+                    backend = _get_backend()
+                    result = run(
+                        GenerateRequest(
+                            project=project,
+                            kind="character",
+                            prompt=args.prompt,
+                            variants=1,
+                            footprint=None,
+                            sheet=None,
+                            anchor=None,
+                            extra_reference=None,
+                        ),
+                        backend=backend,
+                    )
+                    if not result.variants:
+                        raise RuntimeError("generate produced 0 variants")
+                    src = Path(result.variants[0].path)
+                    dst = bdir / "portrait.png"
+                    shutil.copyfile(src, dst)
+                    portrait_rel = "portrait.png"
+                    portrait_identity_path = dst
+                    pipes_report["portrait"] = {"ok": True, "path": str(dst)}
+                    pipe_usage["portrait"] = result.usage
+                    _emit_progress(
+                        "pipe_done", variant=v_idx + 1, pipe="portrait",
+                        ok=True, usage=_usage_as_dict(result.usage),
+                    )
             except Exception as err:  # noqa: BLE001 - top-level boundary
                 msg = f"{type(err).__name__}: {err}"
                 errors.append(f"portrait: {msg}")
                 pipes_report["portrait"] = {"ok": False, "error": msg}
                 _emit_progress(
-                    "pipe_done",
-                    variant=v_idx + 1,
-                    pipe="portrait",
-                    ok=False,
-                    error=msg,
+                    "pipe_done", variant=v_idx + 1, pipe="portrait",
+                    ok=False, error=msg,
                 )
         else:
             # Skip path: ordering guard above already ensured the
@@ -1042,39 +1059,58 @@ def _cmd_bundle(args: argparse.Namespace) -> int:
         walking_sheet_info: BundleSheet | None = None
         if not args.skip_walking:
             _emit_progress("pipe_start", variant=v_idx + 1, pipe="walking")
-            if not args.walking_reference:
-                msg = "--walking-reference required unless --skip-walking is set"
-                errors.append(f"walking: {msg}")
-                pipes_report["walking"] = {"ok": False, "error": msg}
-                _emit_progress(
-                    "pipe_done",
-                    variant=v_idx + 1,
-                    pipe="walking",
-                    ok=False,
-                    error=msg,
-                )
-            else:
-                walking_ref = Path(args.walking_reference).expanduser().resolve()
-                if not walking_ref.is_file():
-                    msg = f"walking reference not found: {walking_ref}"
+            try:
+                if _use_new_backend:
+                    from pixel_forge.backends import resolve_character_backend
+                    from pixel_forge.backends.character import WalkingSheetRequest
+                    cb = resolve_character_backend(args.backend, bdir)
+                    ref_path = None
+                    if hasattr(args, "walking_reference") and args.walking_reference:
+                        ref_path = Path(args.walking_reference).expanduser().resolve()
+                    wr = cb.generate_walking_sheet(WalkingSheetRequest(
+                        prompt=args.prompt,
+                        reference=ref_path,
+                        output_dir=bdir,
+                    ))
+                    profile = SHEET_PROFILES["person-premade"]
+                    walking_sheet_info = BundleSheet(
+                        path=wr.sheet_path.name,
+                        profile_id=profile.id,
+                        cell=profile.target_cell,
+                        rows=profile.target_rows,
+                        cols=profile.target_cols,
+                        direction_order=profile.direction_order,
+                        frames_per_dir=wr.dims.get("frames_per_dir"),
+                    )
+                    pipes_report["walking"] = {
+                        "ok": True,
+                        "path": str(wr.sheet_path),
+                        "dims": wr.dims,
+                    }
+                    _emit_progress(
+                        "pipe_done", variant=v_idx + 1, pipe="walking",
+                        ok=True, usage={"model": "gemini-3.1-flash-image-preview"},
+                    )
+                elif not args.walking_reference:
+                    msg = "--walking-reference required unless --skip-walking is set"
                     errors.append(f"walking: {msg}")
                     pipes_report["walking"] = {"ok": False, "error": msg}
                     _emit_progress(
-                        "pipe_done",
-                        variant=v_idx + 1,
-                        pipe="walking",
-                        ok=False,
-                        error=msg,
+                        "pipe_done", variant=v_idx + 1, pipe="walking",
+                        ok=False, error=msg,
                     )
                 else:
-                    profile = SHEET_PROFILES["person-premade"]
-                    try:
-                        # Pipe 2 receives the portrait as an identity
-                        # anchor so the walking sheet's character face
-                        # and outfit match pipe 1's output. Without this,
-                        # the model would re-invent the character's
-                        # appearance from the prompt alone and could
-                        # drift from the portrait.
+                    walking_ref = Path(args.walking_reference).expanduser().resolve()
+                    if not walking_ref.is_file():
+                        msg = f"walking reference not found: {walking_ref}"
+                        errors.append(f"walking: {msg}")
+                        pipes_report["walking"] = {"ok": False, "error": msg}
+                        _emit_progress(
+                            "pipe_done", variant=v_idx + 1, pipe="walking",
+                            ok=False, error=msg,
+                        )
+                    else:
+                        profile = SHEET_PROFILES["person-premade"]
                         sres = sheet_run(
                             SheetRequest(
                                 project=project,
@@ -1111,23 +1147,17 @@ def _cmd_bundle(args: argparse.Namespace) -> int:
                         }
                         pipe_usage["walking"] = sres.usage
                         _emit_progress(
-                            "pipe_done",
-                            variant=v_idx + 1,
-                            pipe="walking",
-                            ok=True,
-                            usage=_usage_as_dict(sres.usage),
+                            "pipe_done", variant=v_idx + 1, pipe="walking",
+                            ok=True, usage=_usage_as_dict(sres.usage),
                         )
-                    except Exception as err:  # noqa: BLE001
-                        msg = f"{type(err).__name__}: {err}"
-                        errors.append(f"walking: {msg}")
-                        pipes_report["walking"] = {"ok": False, "error": msg}
-                        _emit_progress(
-                            "pipe_done",
-                            variant=v_idx + 1,
-                            pipe="walking",
-                            ok=False,
-                            error=msg,
-                        )
+            except Exception as err:  # noqa: BLE001
+                msg = f"{type(err).__name__}: {err}"
+                errors.append(f"walking: {msg}")
+                pipes_report["walking"] = {"ok": False, "error": msg}
+                _emit_progress(
+                    "pipe_done", variant=v_idx + 1, pipe="walking",
+                    ok=False, error=msg,
+                )
 
         # Pipe 3: per-action AI generation.
         #

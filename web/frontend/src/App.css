@@ -1,0 +1,30 @@
+:root {
+  color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #0a0a0a;
+  color: #eee;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.app {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+}
+.app__header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 16px;
+}
+.app__header h1 {
+  font-size: 24px;
+  font-weight: 600;
+}
+.app__subtitle {
+  color: #888;
+  font-size: 14px;
+}

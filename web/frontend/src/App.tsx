@@ -1,8 +1,16 @@
+import { PersonForge } from "./components/PersonForge";
+import "./App.css";
+
 export default function App() {
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", padding: 24 }}>
-      <h1>Pixel Forge — Character Generator</h1>
-      <p>Form and result grid coming next.</p>
+    <div className="app">
+      <header className="app__header">
+        <h1>Pixel Forge</h1>
+        <span className="app__subtitle">Character Generator</span>
+      </header>
+      <main className="app__main">
+        <PersonForge />
+      </main>
     </div>
   );
 }

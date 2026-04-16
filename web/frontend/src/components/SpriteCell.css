@@ -1,0 +1,49 @@
+.sprite-cell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background: #1a1a1a;
+}
+.sprite-cell__label {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.sprite-cell__canvas {
+  background-color: #222;
+  border: 1px solid #444;
+}
+.sprite-cell__portrait {
+  background-color: #222;
+  border: 1px solid #444;
+  display: block;
+}
+.sprite-cell__dirs {
+  display: flex;
+  gap: 2px;
+}
+.sprite-cell__dir-btn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid #555;
+  border-radius: 3px;
+  background: #2a2a2a;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  line-height: 22px;
+}
+.sprite-cell__dir-btn.active {
+  background: #4a4aff;
+  border-color: #6a6aff;
+  color: #fff;
+}
+.sprite-cell__dir-btn:hover {
+  background: #3a3a3a;
+}

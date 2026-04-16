@@ -36,6 +36,12 @@ app.add_middleware(
 PF_BIN = str(Path(sys.executable).parent / "pf")
 PF_PROJECT = os.environ.get("PF_PROJECT", "sunny-street")
 OUTPUT_DIR = Path(os.environ.get("PF_OUTPUT_DIR", "/tmp/pixel-forge-output"))
+# Walking reference: the premade-01.png sprite sheet used as a layout reference
+# for the walking-sheet pipe. Override via WALKING_REFERENCE env var.
+WALKING_REFERENCE = os.environ.get(
+    "WALKING_REFERENCE",
+    str(Path.home() / "projects" / "sunny-street" / "public" / "sprites" / "premade-01.png"),
+)
 
 
 @app.get("/api/health")
@@ -76,6 +82,7 @@ async def generate(
         "--prompt", prompt,
         "--backend", backend,
         "--variants", str(variants),
+        "--walking-reference", WALKING_REFERENCE,
     ]
     if actions.strip():
         cmd.extend(["--actions", actions.strip()])

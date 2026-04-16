@@ -65,14 +65,15 @@ export function PersonForge() {
               const pipes = (b.pipes ?? {}) as Record<string, Record<string, unknown>>;
               const portraitPath = pipes.portrait?.ok ? `${bdir}/portrait.png` : null;
               const walkPipes = pipes.walking;
-              const walkPath = walkPipes?.ok ? `${bdir}/${walkPipes.path ?? "walk.png"}` : null;
+              // pipes.walking.path may be absolute or relative — always use "walk.png" relative to bdir
+              const walkPath = walkPipes?.ok ? `${bdir}/walk.png` : null;
               const walkDims = walkPipes?.dims as import("../types").WalkDims | null ?? null;
               const actionSheets: Record<string, string> = {};
               if (pipes.actions) {
                 for (const [key, info] of Object.entries(pipes.actions)) {
                   const ai = info as Record<string, unknown>;
-                  if (ai.ok && ai.path) {
-                    actionSheets[key] = `${bdir}/actions/${ai.path}`;
+                  if (ai.ok) {
+                    actionSheets[key] = `${bdir}/actions/${key}.png`;
                   }
                 }
               }

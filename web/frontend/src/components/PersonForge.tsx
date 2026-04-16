@@ -51,7 +51,7 @@ export function PersonForge() {
       },
       (result: unknown) => {
         setIsGenerating(false);
-        setProgressLog((prev) => [...prev, "Generation complete."]);
+        setProgressLog((prev) => [...prev, "Generation complete.", `Result: ${JSON.stringify(result)}`]);
         // Parse the pf bundle stdout payload to populate variant URLs.
         // Shape: { bundle_dir, bundles: [{ bundle_dir, pipes: { portrait, walking, actions } }], ... }
         try {

@@ -103,14 +103,18 @@ async def generate(
             text = line.decode().strip()
             if text:
                 yield f"data: {text}\n\n"
-        stdout, _ = await proc.communicate()
-        if proc.returncode == 0 and stdout:
+        # Read remaining stdout after stderr is exhausted.
+        stdout_bytes = await proc.stdout.read()
+        await proc.wait()
+        # Always try to parse stdout — pf bundle writes the result JSON
+        # even on exit code 3 (partial errors). Only skip if truly empty.
+        if stdout_bytes:
             try:
-                result = json.loads(stdout)
+                result = json.loads(stdout_bytes)
                 yield f"data: {json.dumps({'event': 'done', 'result': result})}\n\n"
             except json.JSONDecodeError:
-                yield f"data: {json.dumps({'event': 'done', 'raw': stdout.decode()})}\n\n"
-        elif proc.returncode != 0:
+                yield f"data: {json.dumps({'event': 'done', 'raw': stdout_bytes.decode()})}\n\n"
+        if proc.returncode and proc.returncode != 0 and not stdout_bytes:
             yield f"data: {json.dumps({'event': 'error', 'code': proc.returncode})}\n\n"
 
     return StreamingResponse(

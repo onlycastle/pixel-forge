@@ -49,6 +49,8 @@ export function CharacterResultGrid({ variants, selectedActions }: Props) {
                     sheetUrl={v.walkSheetUrl}
                     cellW={v.walkDims.cell[0]}
                     cellH={v.walkDims.cell[1]}
+                    sheetCols={v.walkDims.cols}
+                    sheetRows={v.walkDims.rows}
                     framesPerDir={v.walkDims.frames_per_dir}
                     frameRate={WALK_FRAME_RATE}
                     directionOrder={DIR_ORDER}
@@ -69,6 +71,8 @@ export function CharacterResultGrid({ variants, selectedActions }: Props) {
                         sheetUrl={url}
                         cellW={dims.frameWidth}
                         cellH={dims.frameHeight}
+                        sheetCols={dims.framesPerDir * 4}
+                        sheetRows={1}
                         framesPerDir={dims.framesPerDir}
                         frameRate={dims.frameRate}
                         directionOrder={DIR_ORDER}

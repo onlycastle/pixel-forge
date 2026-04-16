@@ -5,13 +5,25 @@ import "./SpriteCell.css";
 
 export interface SpriteCellProps {
   sheetUrl: string;
+  /** Cell width in native pixels (before scaling). */
   cellW: number;
+  /** Cell height in native pixels (before scaling). */
   cellH: number;
+  /** Total columns in the sprite sheet. */
+  sheetCols: number;
+  /** Total rows in the sprite sheet. */
+  sheetRows: number;
+  /** Frames per direction. */
   framesPerDir: number;
+  /** Playback FPS. */
   frameRate: number;
+  /** Direction order in the sheet. */
   directionOrder: Direction[];
+  /** Which row to animate (0=preview, 1=idle, 2=walk). */
   rowIndex: number;
+  /** Display scale (default 2). */
   scale?: number;
+  /** Label above the cell. */
   label?: string;
 }
 
@@ -19,6 +31,8 @@ export function SpriteCell({
   sheetUrl,
   cellW,
   cellH,
+  sheetCols,
+  sheetRows,
   framesPerDir,
   frameRate,
   directionOrder,
@@ -35,6 +49,11 @@ export function SpriteCell({
 
   const dirIdx = directionOrder.indexOf(direction);
   const col = dirIdx * framesPerDir + frameIndex;
+
+  // Scale the entire sheet so each cell renders at cellW*scale × cellH*scale.
+  // background-size = full sheet dimensions × scale.
+  const bgW = sheetCols * cellW * scale;
+  const bgH = sheetRows * cellH * scale;
   const bgX = -(col * cellW * scale);
   const bgY = -(rowIndex * cellH * scale);
 
@@ -48,7 +67,7 @@ export function SpriteCell({
           height: cellH * scale,
           backgroundImage: `url(${sheetUrl})`,
           backgroundPosition: `${bgX}px ${bgY}px`,
-          backgroundSize: "auto",
+          backgroundSize: `${bgW}px ${bgH}px`,
           backgroundRepeat: "no-repeat",
           imageRendering: "pixelated",
         }}

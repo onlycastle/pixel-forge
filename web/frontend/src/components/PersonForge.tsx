@@ -6,7 +6,7 @@ import { CharacterResultGrid } from "./CharacterResultGrid";
 import "./PersonForge.css";
 
 export function PersonForge() {
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState("a young woman in a yellow sundress and white sneakers, shoulder-length brown hair");
   const [selectedActions, setSelectedActions] = useState<ActionType[]>([]);
   const [variants, setVariants] = useState(1);
   const [backend, setBackend] = useState<Backend>("gemini-3.1-flash");
@@ -109,7 +109,7 @@ export function PersonForge() {
             className="person-forge__textarea"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="a young woman in a yellow sundress and white sneakers, shoulder-length brown hair"
+            placeholder="Describe your character..."
             rows={3}
             maxLength={4000}
           />

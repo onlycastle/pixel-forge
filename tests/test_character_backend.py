@@ -31,6 +31,30 @@ class _FakeBackend:
         return ActionSheetsResult(sheets={})
 
 
+def test_resolve_gemini_backend(tmp_path, monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-for-test")
+    from pixel_forge.backends import resolve_character_backend
+
+    backend = resolve_character_backend("gemini", tmp_path)
+    assert type(backend).__name__ == "GeminiCharacterBackend"
+
+
+def test_resolve_pixellab_backend(tmp_path):
+    from pixel_forge.backends import resolve_character_backend
+
+    backend = resolve_character_backend("pixellab", tmp_path)
+    assert type(backend).__name__ == "PixelLabCharacterBackend"
+
+
+def test_resolve_unknown_backend_raises(tmp_path):
+    import pytest
+
+    from pixel_forge.backends import resolve_character_backend
+
+    with pytest.raises(ValueError, match="unknown character backend"):
+        resolve_character_backend("nonexistent", tmp_path)
+
+
 def test_fake_backend_satisfies_protocol():
     """A class implementing the three methods structurally satisfies CharacterBackend."""
     backend: CharacterBackend = _FakeBackend()

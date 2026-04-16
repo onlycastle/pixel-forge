@@ -10,6 +10,8 @@ requires-python = ">=3.12"
 dependencies = [
     "Pillow>=10.2",
     "google-generativeai>=0.7",
+    "google-genai>=1.0",
+    "pixellab>=1.0",
 ]
 
 [project.scripts]

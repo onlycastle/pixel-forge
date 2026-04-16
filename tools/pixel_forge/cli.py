@@ -40,6 +40,25 @@ from pixel_forge.sheet import (
     SheetRequest,
     run as sheet_run,
 )
+from pixel_forge.actions import (
+    BUNDLE_ASSET_TYPES,
+    FARMER_ACTIONS,
+    ActionSheetRequest,
+    ActionSourceMissingError,
+    get_bundle_catalog,
+    load_limezu_action_sheet,
+    run_action_sheet,
+)
+from pixel_forge.bundles import (
+    BUNDLE_SCHEMA_VERSION,
+    BundleSchemaError,
+    BundleSheet,
+    CharacterBundle,
+    bundle_dir,
+    save_bundle,
+)
+from pixel_forge.pricing import estimate_usd
+from pixel_forge.usage import UsageRecord
 from pixel_forge.profiles.limezu import (
     LAYER_ACCESSORY,
     LAYER_BODY,
@@ -563,6 +582,732 @@ def _cmd_sheet(args: argparse.Namespace) -> int:
     return 0 if not result.errors else 3
 
 
+def _usage_as_dict(u: "UsageRecord | None") -> dict:
+    """Flatten a UsageRecord into the JSON shape the CLI payload emits.
+
+    None becomes a fully zero record with an empty model name so UIs
+    can branch on `total_tokens == 0` rather than on None.
+    """
+    if u is None:
+        return {
+            "model": "",
+            "prompt_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "call_count": 0,
+            "usd": 0.0,
+        }
+    return {
+        "model": u.model,
+        "prompt_tokens": u.prompt_tokens,
+        "output_tokens": u.output_tokens,
+        "total_tokens": u.total_tokens,
+        "call_count": u.call_count,
+        "usd": estimate_usd(u.model, u.prompt_tokens, u.output_tokens),
+    }
+
+
+def _sum_usage_dicts(records: list["UsageRecord | None"]) -> dict:
+    """Sum token counters across records and re-compute USD against
+    the first non-empty model name encountered.
+    """
+    model = ""
+    prompt = 0
+    output = 0
+    total = 0
+    calls = 0
+    for r in records:
+        if r is None:
+            continue
+        if not model and r.model:
+            model = r.model
+        prompt += r.prompt_tokens
+        output += r.output_tokens
+        total += r.total_tokens
+        calls += r.call_count
+    return {
+        "model": model,
+        "prompt_tokens": prompt,
+        "output_tokens": output,
+        "total_tokens": total,
+        "call_count": calls,
+        "usd": estimate_usd(model, prompt, output),
+    }
+
+
+def _usage_from_summary_total(total_dict: dict) -> "UsageRecord | None":
+    """Rehydrate a UsageRecord from a per-variant `total` summary dict.
+
+    Returns None when the record has zero calls (so grand totals don't
+    pollute `call_count` with empty pipe rows).
+    """
+    if total_dict["call_count"] == 0 and total_dict["total_tokens"] == 0:
+        return None
+    return UsageRecord(
+        model=total_dict["model"],
+        prompt_tokens=total_dict["prompt_tokens"],
+        output_tokens=total_dict["output_tokens"],
+        total_tokens=total_dict["total_tokens"],
+        call_count=total_dict["call_count"],
+    )
+
+
+def _sum_usage_records(records: list["UsageRecord | None"]) -> dict:
+    return _sum_usage_dicts(records)
+
+
+def _sum_usage_records_to_record(
+    records: list["UsageRecord | None"],
+) -> "UsageRecord | None":
+    """Same summation as `_sum_usage_dicts` but returns a UsageRecord.
+
+    Used by pipe 3, which fans out into N per-action backend calls and
+    needs to surface a single collapsed UsageRecord for the pipe-level
+    `pipe_usage["actions"]` slot. Returns None when every record is
+    None/empty so the summary path below can cleanly represent "pipe
+    didn't run or produced no API cost".
+    """
+    summed = _sum_usage_dicts(records)
+    if summed["call_count"] == 0 and summed["total_tokens"] == 0:
+        return None
+    return UsageRecord(
+        model=summed["model"],
+        prompt_tokens=summed["prompt_tokens"],
+        output_tokens=summed["output_tokens"],
+        total_tokens=summed["total_tokens"],
+        call_count=summed["call_count"],
+    )
+
+
+def _walking_dims_from_sidecar(sidecar_path: Path, profile) -> dict:
+    """Extract the frame dimensions + layout from a walking sheet sidecar.
+
+    The sidecar written by `sheet.run` contains the REAL per-asset
+    grid (detected_grid, frame size, locomotion_rows, direction_order)
+    which can differ from the profile defaults when the sheet extractor
+    retargets the output. Reading it back gives consumers (GUI Player,
+    downstream renderers) authoritative dims without having to re-read
+    the sidecar themselves.
+
+    Falls back to profile defaults if the sidecar is missing or malformed
+    so the client still gets *something* and can animate the walking
+    sheet even when the sidecar path is unusable.
+    """
+    fallback = {
+        "cell": list(profile.target_cell),
+        "rows": profile.target_rows,
+        "cols": profile.target_cols,
+        "direction_order": list(profile.direction_order),
+        "locomotion_rows": (
+            dict(profile.locomotion_rows) if profile.locomotion_rows else None
+        ),
+    }
+    try:
+        raw = sidecar_path.read_text()
+    except OSError:
+        return fallback
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return fallback
+    anim = parsed.get("animation") if isinstance(parsed, dict) else None
+    if not isinstance(anim, dict):
+        return fallback
+    frame = anim.get("frame")
+    grid = anim.get("detected_grid")
+    dims: dict = dict(fallback)
+    if isinstance(frame, dict) and "w" in frame and "h" in frame:
+        dims["cell"] = [int(frame["w"]), int(frame["h"])]
+    if isinstance(grid, dict):
+        if "cols" in grid:
+            dims["cols"] = int(grid["cols"])
+        if "rows" in grid:
+            dims["rows"] = int(grid["rows"])
+    if isinstance(anim.get("direction_order"), list):
+        dims["direction_order"] = list(anim["direction_order"])
+    if isinstance(anim.get("locomotion_rows"), dict):
+        dims["locomotion_rows"] = dict(anim["locomotion_rows"])
+    return dims
+
+
+def _emit_progress(event: str, **fields) -> None:
+    """Write a single JSON-lines progress event to stderr.
+
+    Consumed by the streaming API route (`/api/asset-forge/generate-
+    stream/route.ts`) which forwards each line as a `progress` SSE
+    event to the browser. Stdout is reserved for the final JSON
+    payload — callers that ignore stderr (CI, non-streaming tests)
+    keep working unchanged.
+    """
+    import time as _time
+    payload = {"event": event, "ts_ms": int(_time.time() * 1000), **fields}
+    sys.stderr.write(json.dumps(payload) + "\n")
+    sys.stderr.flush()
+
+
+def _cmd_bundle(args: argparse.Namespace) -> int:
+    """Build one or more 3-pipe character bundles in a single invocation.
+
+    All three pipes now run per variant with full AI generation:
+      1. Pipe 1 (portrait, via `generate.run`) produces the character's
+         portrait from the prompt.
+      2. Pipe 2 (walking sheet, via `sheet.run`) produces the 3-row
+         locomotion sheet, passing the portrait as an identity anchor
+         via `extra_reference` so the walking character matches the
+         portrait face/outfit.
+      3. Pipe 3 (action sheets, via `actions.run_action_sheet`) produces
+         one 4-row direction sheet per requested action. The LimeZu
+         farmer action sheet is used as a LAYOUT reference only; the
+         portrait is passed as the identity anchor so the generated
+         frames show OUR character performing the action, not the
+         farmer.
+
+    Because all three pipes now depend on the portrait as an identity
+    anchor, portrait generation must succeed before pipes 2 and 3 can
+    run. If the caller passes `--skip-portrait`, an existing
+    `portrait.png` in the target bundle directory is reused (useful for
+    "regenerate just one action" workflows); otherwise pipes 2 and 3
+    are rejected with a clear error BEFORE any filesystem side effects.
+
+    Output layout:
+      --variants 1 (default) → out/characters/bundles/<slug>/          (legacy path)
+      --variants N  (N >= 2) → out/characters/bundles/<slug>-v1/
+                              out/characters/bundles/<slug>-v2/
+                              ...
+                              out/characters/bundles/<slug>-vN/
+
+    The CLI JSON response carries a `bundles` array with N entries. For
+    N=1 the top-level `bundle_dir`, `manifest_path`, `slug`, `pipes`,
+    `errors` fields mirror `bundles[0]` so existing single-variant
+    callers (and tests) keep working unchanged.
+    """
+    projects_root = Path(args.projects_root).resolve()
+    project_dir = projects_root / args.project
+    try:
+        project = load_project(project_dir)
+    except ProjectConfigError as err:
+        print(json.dumps({"error": str(err)}), file=sys.stderr)
+        return 2
+
+    # Validate variants count BEFORE touching the filesystem.
+    n_variants = args.variants
+    if n_variants < 1 or n_variants > 16:
+        print(
+            json.dumps({"error": f"variants must be between 1 and 16, got {n_variants}"}),
+            file=sys.stderr,
+        )
+        return 2
+
+    # Resolve output root (once). Project.output_root may be a relative
+    # string; anchor it to the project dir so bundles always land under
+    # the project's out tree regardless of CWD.
+    out_root = Path(project.output_root)
+    if not out_root.is_absolute():
+        out_root = (project.root / out_root).resolve()
+
+    # Derive per-variant slugs + dirs. Validate ALL of them upfront so a
+    # malformed slug never leaves a partial bundle on disk. For N=1 we
+    # use the unsuffixed slug (back-compat with existing consumers); for
+    # N>=2 we suffix with -vK to disambiguate sibling candidates.
+    def _variant_slug(idx: int) -> str:
+        if n_variants == 1:
+            return args.slug
+        return f"{args.slug}-v{idx + 1}"
+
+    try:
+        variant_dirs: list[Path] = [
+            bundle_dir(out_root, _variant_slug(i)) for i in range(n_variants)
+        ]
+    except BundleSchemaError as err:
+        print(json.dumps({"error": str(err)}), file=sys.stderr)
+        return 2
+
+    # Select the pipe-3 catalog based on --asset-type. Catalog may be
+    # empty when the asset type is recognized but not yet populated
+    # (animal, decoration). That case gets a distinct error below so
+    # users see a roadmap hint rather than "unknown action".
+    asset_type = args.asset_type
+    catalog = get_bundle_catalog(asset_type)
+
+    # Parse --actions early so we can reject unknown keys before burning
+    # any Gemini budget on pipes 1 and 2.
+    requested_actions: list[str] = []
+    if args.actions:
+        requested_actions = [a.strip() for a in args.actions.split(",") if a.strip()]
+        if requested_actions and not catalog:
+            print(
+                json.dumps(
+                    {
+                        "error": (
+                            f"no action/state catalog registered for "
+                            f"asset_type={asset_type!r}; bundle mode is "
+                            f"fully wired for 'person' only in v1"
+                        )
+                    }
+                ),
+                file=sys.stderr,
+            )
+            return 2
+        unknown = [a for a in requested_actions if a not in catalog]
+        if unknown:
+            print(
+                json.dumps(
+                    {
+                        "error": (
+                            f"unknown action(s) {unknown!r} for "
+                            f"asset_type={asset_type!r}; valid: "
+                            f"{sorted(catalog)}"
+                        )
+                    }
+                ),
+                file=sys.stderr,
+            )
+            return 2
+
+    # Build the backend lazily — only pipes 1 and 2 need it. An
+    # actions-only run (--skip-portrait --skip-walking) can proceed
+    # without a configured backend at all, which is nice for tests and
+    # for the "just regenerate my chop sheet" quick path.
+    _backend_cache: list = []
+
+    def _get_backend():
+        if _backend_cache:
+            return _backend_cache[0]
+        effective_backend = args.backend or project.backend or "gemini"
+        if effective_backend == "stub":
+            if not args.stub_template:
+                raise RuntimeError("--stub-template required when backend=stub")
+            b = StubBackend(
+                template_path=Path(args.stub_template).resolve(),
+                output_dir=project_dir / "out" / "_raw",
+            )
+        elif effective_backend == "gemini":
+            from pixel_forge.backends.gemini import GeminiBackend
+
+            b = GeminiBackend(output_dir=project_dir / "out" / "_raw")
+        else:
+            raise RuntimeError(f"unknown backend: {effective_backend}")
+        _backend_cache.append(b)
+        return b
+
+    # --- Portrait-ordering guard --------------------------------------
+    # Pipes 2 and 3 both need a portrait to pass to the backend as an
+    # identity anchor. If the caller skipped portrait generation, we
+    # require that an existing portrait.png already lives in each
+    # variant's bundle directory (typical re-run workflow: "just
+    # regenerate my chop sheet, don't touch the portrait"). Enforcing
+    # this BEFORE any filesystem side effects gives the user a clear
+    # early error instead of a half-built bundle whose actions are
+    # silently missing their identity anchor.
+    needs_identity_anchor = (not args.skip_walking) or bool(requested_actions)
+    if args.skip_portrait and needs_identity_anchor:
+        missing_portraits: list[str] = []
+        for bdir in variant_dirs:
+            if not (bdir / "portrait.png").is_file():
+                missing_portraits.append(str(bdir))
+        if missing_portraits:
+            print(
+                json.dumps(
+                    {
+                        "error": (
+                            "--skip-portrait requires an existing "
+                            "portrait.png in every target bundle "
+                            "directory because pipe 2 (walking) and "
+                            "pipe 3 (actions) use the portrait as an "
+                            "identity anchor. Missing in: "
+                            f"{missing_portraits}"
+                        )
+                    }
+                ),
+                file=sys.stderr,
+            )
+            return 2
+
+    # Pre-validate that every requested action's LimeZu source is on
+    # disk. Previously this was also where we pre-reshaped them into a
+    # shared cache; now each variant re-generates via `run_action_sheet`
+    # so all we need is a reachability check that fails fast before any
+    # variant burns Gemini budget on pipes 1/2 only to die on pipe 3.
+    action_catalog_errors: dict[str, str] = {}
+    for key in requested_actions:
+        profile = catalog[key]
+        try:
+            load_limezu_action_sheet(profile)
+        except (ActionSourceMissingError, ValueError) as err:
+            action_catalog_errors[key] = f"{type(err).__name__}: {err}"
+
+    created_at = datetime.now(tz=timezone.utc).isoformat(timespec="seconds")
+
+    # Announce the overall plan so the streaming UI can render empty
+    # progress bars BEFORE any pipe starts working. Gives the user
+    # immediate feedback that generation is under way.
+    _emit_progress(
+        "bundle_start",
+        variants=n_variants,
+        slug=args.slug,
+        asset_type=asset_type,
+        actions=requested_actions,
+        skip_portrait=bool(args.skip_portrait),
+        skip_walking=bool(args.skip_walking),
+    )
+
+    # --- Per-variant loop: pipes 1 + 2 fresh, pipe 3 copied ------------
+    bundle_payloads: list[dict] = []
+    for v_idx, bdir in enumerate(variant_dirs):
+        variant_slug = _variant_slug(v_idx)
+        bdir.mkdir(parents=True, exist_ok=True)
+
+        _emit_progress(
+            "variant_start",
+            variant=v_idx + 1,
+            variant_slug=variant_slug,
+        )
+
+        pipes_report: dict = {"portrait": None, "walking": None, "actions": {}}
+        errors: list[str] = []
+        # Per-pipe usage bookkeeping — populated if the pipe hit an AI
+        # backend. All three pipes now touch the backend (pipe 3 moved
+        # from a deterministic reshape to a full AI call per action), so
+        # all three contribute to the total.
+        pipe_usage: dict[str, UsageRecord | None] = {
+            "portrait": None,
+            "walking": None,
+            "actions": None,
+        }
+
+        # Pipe 1: portrait
+        portrait_rel: str | None = None
+        # Absolute path to the portrait that will feed pipes 2 and 3 as
+        # the identity anchor. Resolved either from a freshly generated
+        # portrait (pipe 1) or from a pre-existing portrait on disk
+        # (reuse case under --skip-portrait). Stays None if portrait
+        # was both skipped AND absent — in that case the ordering
+        # guard above would already have returned, so it only stays
+        # None here when pipe 2 and pipe 3 are both also skipped.
+        portrait_identity_path: Path | None = None
+        if not args.skip_portrait:
+            _emit_progress("pipe_start", variant=v_idx + 1, pipe="portrait")
+            try:
+                backend = _get_backend()
+                result = run(
+                    GenerateRequest(
+                        project=project,
+                        kind="character",
+                        prompt=args.prompt,
+                        variants=1,
+                        footprint=None,
+                        sheet=None,
+                        anchor=None,
+                        extra_reference=None,
+                    ),
+                    backend=backend,
+                )
+                if not result.variants:
+                    raise RuntimeError("generate produced 0 variants")
+                src = Path(result.variants[0].path)
+                dst = bdir / "portrait.png"
+                shutil.copyfile(src, dst)
+                portrait_rel = "portrait.png"
+                portrait_identity_path = dst
+                pipes_report["portrait"] = {"ok": True, "path": str(dst)}
+                pipe_usage["portrait"] = result.usage
+                _emit_progress(
+                    "pipe_done",
+                    variant=v_idx + 1,
+                    pipe="portrait",
+                    ok=True,
+                    usage=_usage_as_dict(result.usage),
+                )
+            except Exception as err:  # noqa: BLE001 - top-level boundary
+                msg = f"{type(err).__name__}: {err}"
+                errors.append(f"portrait: {msg}")
+                pipes_report["portrait"] = {"ok": False, "error": msg}
+                _emit_progress(
+                    "pipe_done",
+                    variant=v_idx + 1,
+                    pipe="portrait",
+                    ok=False,
+                    error=msg,
+                )
+        else:
+            # Skip path: ordering guard above already ensured the
+            # portrait is on disk when pipes 2/3 need it. Surface it as
+            # the identity anchor for this variant.
+            existing = bdir / "portrait.png"
+            if existing.is_file():
+                portrait_identity_path = existing
+                portrait_rel = "portrait.png"
+
+        # Pipe 2: walking sheet
+        walking_sheet_info: BundleSheet | None = None
+        if not args.skip_walking:
+            _emit_progress("pipe_start", variant=v_idx + 1, pipe="walking")
+            if not args.walking_reference:
+                msg = "--walking-reference required unless --skip-walking is set"
+                errors.append(f"walking: {msg}")
+                pipes_report["walking"] = {"ok": False, "error": msg}
+                _emit_progress(
+                    "pipe_done",
+                    variant=v_idx + 1,
+                    pipe="walking",
+                    ok=False,
+                    error=msg,
+                )
+            else:
+                walking_ref = Path(args.walking_reference).expanduser().resolve()
+                if not walking_ref.is_file():
+                    msg = f"walking reference not found: {walking_ref}"
+                    errors.append(f"walking: {msg}")
+                    pipes_report["walking"] = {"ok": False, "error": msg}
+                    _emit_progress(
+                        "pipe_done",
+                        variant=v_idx + 1,
+                        pipe="walking",
+                        ok=False,
+                        error=msg,
+                    )
+                else:
+                    profile = SHEET_PROFILES["person-premade"]
+                    try:
+                        # Pipe 2 receives the portrait as an identity
+                        # anchor so the walking sheet's character face
+                        # and outfit match pipe 1's output. Without this,
+                        # the model would re-invent the character's
+                        # appearance from the prompt alone and could
+                        # drift from the portrait.
+                        sres = sheet_run(
+                            SheetRequest(
+                                project=project,
+                                profile=profile,
+                                prompt=args.prompt,
+                                reference_path=walking_ref,
+                                variants=1,
+                                extra_reference=portrait_identity_path,
+                            )
+                        )
+                        if not sres.variants:
+                            raise RuntimeError("sheet produced 0 clean variants")
+                        src = Path(sres.variants[0].clean_path)
+                        dst = bdir / "walking.png"
+                        shutil.copyfile(src, dst)
+                        src_sidecar = Path(sres.variants[0].sidecar_path)
+                        if src_sidecar.is_file():
+                            shutil.copyfile(src_sidecar, bdir / "walking.meta.json")
+                        walking_sheet_info = BundleSheet(
+                            path="walking.png",
+                            profile_id=profile.id,
+                            cell=profile.target_cell,
+                            rows=profile.target_rows,
+                            cols=profile.target_cols,
+                            direction_order=profile.direction_order,
+                            frames_per_dir=None,
+                        )
+                        pipes_report["walking"] = {
+                            "ok": True,
+                            "path": str(dst),
+                            "dims": _walking_dims_from_sidecar(
+                                bdir / "walking.meta.json", profile
+                            ),
+                        }
+                        pipe_usage["walking"] = sres.usage
+                        _emit_progress(
+                            "pipe_done",
+                            variant=v_idx + 1,
+                            pipe="walking",
+                            ok=True,
+                            usage=_usage_as_dict(sres.usage),
+                        )
+                    except Exception as err:  # noqa: BLE001
+                        msg = f"{type(err).__name__}: {err}"
+                        errors.append(f"walking: {msg}")
+                        pipes_report["walking"] = {"ok": False, "error": msg}
+                        _emit_progress(
+                            "pipe_done",
+                            variant=v_idx + 1,
+                            pipe="walking",
+                            ok=False,
+                            error=msg,
+                        )
+
+        # Pipe 3: per-action AI generation.
+        #
+        # For each requested action, call `run_action_sheet` which uses
+        # the LimeZu farmer sheet as a layout reference and the portrait
+        # as an identity anchor to produce a sprite sheet of OUR
+        # character performing the action. Each variant produces fresh
+        # outputs (no cross-variant sharing) because the generated
+        # frames depend on the variant's own portrait.
+        action_sheet_infos: dict[str, BundleSheet] = {}
+        action_usage_records: list[UsageRecord | None] = []
+        if requested_actions:
+            _emit_progress(
+                "pipe_start",
+                variant=v_idx + 1,
+                pipe="actions",
+                actions=requested_actions,
+            )
+            actions_dir = bdir / "actions"
+            actions_dir.mkdir(parents=True, exist_ok=True)
+            # Backend is looked up lazily so a LimeZu-sources-missing
+            # case (every action pre-errored) never needs a working
+            # backend at all — important for tests that exercise the
+            # error path without providing a stub template.
+            action_backend = None
+            for key in requested_actions:
+                # Fail fast if the LimeZu source for this action was
+                # missing at startup (pre-validated above). Keeping the
+                # per-variant error structure consistent with the old
+                # code path so downstream consumers don't break.
+                if key in action_catalog_errors:
+                    msg = action_catalog_errors[key]
+                    errors.append(f"action {key}: {msg}")
+                    pipes_report["actions"][key] = {"ok": False, "error": msg}
+                    continue
+                profile = catalog[key]
+                try:
+                    if action_backend is None:
+                        action_backend = _get_backend()
+                    ares = run_action_sheet(
+                        ActionSheetRequest(
+                            project=project,
+                            profile=profile,
+                            prompt=args.prompt,
+                            variants=1,
+                            extra_reference=portrait_identity_path,
+                        ),
+                        backend=action_backend,
+                    )
+                    if ares.errors and not ares.variants:
+                        raise RuntimeError("; ".join(ares.errors))
+                    if not ares.variants:
+                        raise RuntimeError("action pipeline produced 0 variants")
+                    src = Path(ares.variants[0].clean_path)
+                    dst = actions_dir / f"{key}.png"
+                    shutil.copyfile(src, dst)
+                    # Sidecar tag-along so downstream tooling can see
+                    # the same per-variant metadata the walking sheet
+                    # gets. We name it `<action>.meta.json` next to the
+                    # action PNG, mirroring walking's convention.
+                    src_sidecar = Path(ares.variants[0].sidecar_path)
+                    if src_sidecar.is_file():
+                        shutil.copyfile(src_sidecar, actions_dir / f"{key}.meta.json")
+                    action_sheet_infos[key] = BundleSheet(
+                        path=f"actions/{key}.png",
+                        profile_id=profile.id,
+                        cell=(profile.cell_w, profile.cell_h),
+                        rows=len(profile.direction_order),
+                        cols=profile.frames_per_dir,
+                        direction_order=profile.direction_order,
+                        frames_per_dir=profile.frames_per_dir,
+                    )
+                    pipes_report["actions"][key] = {
+                        "ok": True,
+                        "path": str(dst),
+                        "dims": {
+                            "cell": [profile.cell_w, profile.cell_h],
+                            "rows": len(profile.direction_order),
+                            "cols": profile.frames_per_dir,
+                            "frames_per_dir": profile.frames_per_dir,
+                            "direction_order": list(profile.direction_order),
+                        },
+                    }
+                    action_usage_records.append(ares.usage)
+                except Exception as err:  # noqa: BLE001
+                    msg = f"{type(err).__name__}: {err}"
+                    errors.append(f"action {key}: {msg}")
+                    pipes_report["actions"][key] = {"ok": False, "error": msg}
+            # Summed action usage for this variant. Collected into a
+            # single UsageRecord so the summary path below treats actions
+            # symmetrically with portrait and walking.
+            pipe_usage["actions"] = _sum_usage_records_to_record(
+                action_usage_records
+            )
+            _emit_progress(
+                "pipe_done",
+                variant=v_idx + 1,
+                pipe="actions",
+                ok=not any(
+                    p and not p.get("ok", False)
+                    for p in pipes_report["actions"].values()
+                ),
+                usage=_usage_as_dict(pipe_usage["actions"]),
+            )
+
+        bundle_obj = CharacterBundle(
+            schema_version=BUNDLE_SCHEMA_VERSION,
+            slug=variant_slug,
+            source_prompt=args.prompt,
+            created_at=created_at,
+            portrait=portrait_rel,
+            walking=walking_sheet_info,
+            actions=action_sheet_infos,
+        )
+        manifest = save_bundle(bdir, bundle_obj)
+
+        # Build usage summary for this variant: per-pipe + total. All
+        # three pipes now touch the backend, so all three are summed.
+        usage_summary: dict = {
+            "portrait": _usage_as_dict(pipe_usage["portrait"]),
+            "walking": _usage_as_dict(pipe_usage["walking"]),
+            "actions": _usage_as_dict(pipe_usage["actions"]),
+            "total": _sum_usage_dicts(
+                [
+                    pipe_usage["portrait"],
+                    pipe_usage["walking"],
+                    pipe_usage["actions"],
+                ]
+            ),
+        }
+
+        bundle_payloads.append(
+            {
+                "bundle_dir": str(bdir),
+                "manifest_path": str(manifest),
+                "slug": variant_slug,
+                "pipes": pipes_report,
+                "errors": errors,
+                "usage": usage_summary,
+            }
+        )
+        _emit_progress(
+            "variant_done",
+            variant=v_idx + 1,
+            variant_slug=variant_slug,
+            errors=errors,
+            usage=usage_summary["total"],
+        )
+
+    # Top-level response: back-compat fields mirror bundles[0]; N is
+    # discoverable via the `bundles` array length. The top-level
+    # `usage_total` is the grand total across ALL variants (useful for
+    # "what did this run cost me" headline).
+    first = bundle_payloads[0]
+    grand_totals: list[UsageRecord | None] = []
+    for b in bundle_payloads:
+        grand_totals.append(
+            _usage_from_summary_total(b["usage"]["total"])
+        )
+    payload = {
+        "bundle_dir": first["bundle_dir"],
+        "manifest_path": first["manifest_path"],
+        "slug": first["slug"],
+        "pipes": first["pipes"],
+        "errors": first["errors"],
+        "bundles": bundle_payloads,
+        "usage_total": _sum_usage_records(grand_totals),
+    }
+    _emit_progress(
+        "bundle_done",
+        variants=len(bundle_payloads),
+        usage_total=payload["usage_total"],
+    )
+    print(json.dumps(payload))
+    # Exit code: 0 iff EVERY variant ran clean. 3 if any variant had an
+    # error (matches the single-variant semantics of the prior version).
+    any_errors = any(b["errors"] for b in bundle_payloads)
+    return 0 if not any_errors else 3
+
+
 def _cmd_paperdoll(args: argparse.Namespace) -> int:
     projects_root = Path(args.projects_root).resolve()
     project_dir = projects_root / args.project
@@ -843,6 +1588,86 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional second reference image (e.g. an uploaded identity anchor)",
     )
     sh.set_defaults(func=_cmd_sheet)
+
+    bundle = sub.add_parser(
+        "bundle",
+        help="Build a 3-pipe character bundle (portrait + walking + actions)",
+    )
+    bundle.add_argument("--projects-root", default="projects")
+    bundle.add_argument("--project", required=True)
+    bundle.add_argument(
+        "--slug",
+        required=True,
+        help="Bundle slug (ASCII alnum/-/_, <=64 chars); used as directory name",
+    )
+    bundle.add_argument(
+        "--prompt",
+        required=True,
+        help="Character description, shared by portrait and walking pipes",
+    )
+    bundle.add_argument(
+        "--actions",
+        default="",
+        help=(
+            "Comma-separated action keys to include in pipe 3. Valid keys: "
+            + ", ".join(sorted(FARMER_ACTIONS))
+        ),
+    )
+    bundle.add_argument(
+        "--walking-reference",
+        default=None,
+        help=(
+            "Absolute path to the person-premade layout reference PNG. "
+            "Required unless --skip-walking is set."
+        ),
+    )
+    bundle.add_argument(
+        "--skip-portrait",
+        action="store_true",
+        help="Skip pipe 1 (portrait generation)",
+    )
+    bundle.add_argument(
+        "--skip-walking",
+        action="store_true",
+        help="Skip pipe 2 (walking sheet generation)",
+    )
+    bundle.add_argument(
+        "--backend",
+        choices=["gemini", "pixellab", "stub"],
+        default=None,
+        help="Generation backend (default: project.toml setting or gemini)",
+    )
+    bundle.add_argument(
+        "--stub-template",
+        default=None,
+        help="Path to a PNG template (only with --backend stub, for tests)",
+    )
+    bundle.add_argument(
+        "--variants",
+        type=int,
+        default=1,
+        help=(
+            "Number of candidate bundles to produce in a single run. "
+            "When >1, each variant is written to a sibling directory "
+            "<slug>-v1/, <slug>-v2/, ... with its own bundle.json (slug "
+            "'<slug>-vK'). ALL three pipes now re-run per variant, so "
+            "N variants × M actions is N × (2 + M) backend calls — "
+            "plan budget accordingly."
+        ),
+    )
+    bundle.add_argument(
+        "--asset-type",
+        choices=BUNDLE_ASSET_TYPES,
+        default="person",
+        help=(
+            "Selects the action/state catalog for pipe 3. 'person' uses "
+            "HUMAN_ACTIONS (farmer actions today). 'animal' and "
+            "'decoration' are plumbed but their catalogs are not yet "
+            "populated — requesting actions for them surfaces a clear "
+            "'no catalog registered' error."
+        ),
+    )
+    bundle.set_defaults(func=_cmd_bundle)
 
     pd = sub.add_parser(
         "paperdoll",

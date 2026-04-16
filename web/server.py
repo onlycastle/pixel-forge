@@ -14,6 +14,11 @@ import sys
 import time as _time
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load .env from the project root (one level up from web/)
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse

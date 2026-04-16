@@ -228,51 +228,54 @@ class GeminiCharacterBackend:
         out.write_bytes(data)
         return PortraitResult(path=out)
 
-    def _generate_one_strip(
-        self, direction: str, prompt_text: str, ref_img: Image.Image | None,
-    ) -> tuple[str, Image.Image]:
-        """Generate one direction's strip. Returns (direction, image)."""
-        ref_cell = ref_img
-        if ref_img is not None:
-            dir_idx = DIRECTIONS.index(direction)
-            rw, rh = ref_img.size
-            cell_w_ref = rw // len(DIRECTIONS)
-            ref_cell = ref_img.crop(
-                (dir_idx * cell_w_ref, 0, (dir_idx + 1) * cell_w_ref, rh)
-            )
-
-        facing = FACING_DEFS[direction]
-        prompt = (
-            f"Generate a pixel-art sprite sheet showing a character "
-            f"walking. {facing} Character: {prompt_text}.\n\n"
-            f"The sheet should be a grid: 6 columns wide and 3 rows tall.\n"
-            f"Row 1: standing preview. Row 2: idle animation frames. "
-            f"Row 3: walk-cycle animation frames.\n\n"
-            f"Style: pixel art. Crisp edges. No anti-aliasing. "
-            f"Dark outline on the silhouette. Solid neutral gray background. "
-            f"No borders, no text, no labels."
-        )
-        data = self._call(prompt, ref_cell, aspect="1:1")
-        return direction, Image.open(io.BytesIO(data)).convert("RGBA")
-
     def generate_walking_sheet(self, req: WalkingSheetRequest) -> WalkingSheetResult:
+        """Generate a full walking sheet in a single 8:1 API call.
+
+        This approach produces the best style consistency (all cells
+        generated in one image share visual context) and is 4× faster
+        than per-direction strip calls. The raw output (~2928×352) is
+        LANCZOS-resized to the PERSON_PREMADE target (1792×192) and
+        chroma-keyed to alpha.
+        """
         ref_img = None
         if req.reference and req.reference.is_file():
             ref_img = Image.open(req.reference).convert("RGBA")
+            # Crop to locomotion band (rows 0-2) if the reference is
+            # a full premade sheet (1792×1312).
+            rw, rh = ref_img.size
+            target_h = TARGET_ROWS * CELL_H  # 192
+            if rh > target_h:
+                ref_img = ref_img.crop((0, 0, rw, target_h))
 
-        # Run 4 direction calls in parallel for ~4× speedup.
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        strips: dict[str, Image.Image] = {}
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            futures = {
-                pool.submit(self._generate_one_strip, d, req.prompt, ref_img): d
-                for d in DIRECTIONS
-            }
-            for future in as_completed(futures):
-                direction, strip_img = future.result()
-                strips[direction] = strip_img
+        prompt = (
+            f"Generate a pixel-art sprite sheet for this character: "
+            f"{req.prompt}.\n\n"
+            f"Match the layout of the attached reference image. The sheet "
+            f"has three rows:\n"
+            f"- The top row shows the character looking right, looking up, "
+            f"looking left, and looking down.\n"
+            f"- The middle row shows idle frames for each of those four "
+            f"directions, in the same order.\n"
+            f"- The bottom row shows walk-cycle frames for each of those "
+            f"four directions, in the same order.\n\n"
+            f"The same character must appear in every cell — same face, "
+            f"same outfit, same colors. Use the same overall look as the "
+            f"attached reference image.\n\n"
+            f"Style: pixel art. Crisp 1-pixel edges. No anti-aliasing. "
+            f"A 1-pixel dark outline on the silhouette. No borders, no "
+            f"text, no labels."
+        )
+        data = self._call(prompt, ref_img, aspect="8:1")
+        raw = Image.open(io.BytesIO(data)).convert("RGBA")
 
-        sheet = _stitch_direction_strips(strips)
+        # Resize to PERSON_PREMADE target
+        target_w = TARGET_COLS * CELL_W  # 1792
+        target_h = TARGET_ROWS * CELL_H  # 192
+        sheet = raw.resize((target_w, target_h), Image.LANCZOS)
+
+        # Chroma-key background to transparent
+        sheet = _chroma_key(sheet)
+
         out = req.output_dir / "walk.png"
         out.parent.mkdir(parents=True, exist_ok=True)
         sheet.save(out, "PNG")

@@ -149,3 +149,120 @@ def test_stitch_direction_strips():
     px = list(cell_walk_left.getdata())
     blue_px = [p for p in px if p[2] > 200 and p[0] < 50 and p[3] > 200]
     assert len(blue_px) > 0, "left walk cell should contain blue character pixels"
+
+
+# ---------------------------------------------------------------------------
+# PixelLabCharacterBackend tests
+# ---------------------------------------------------------------------------
+
+
+def _mock_pixellab_image(w=64, h=64):
+    """Build a mock PixelLab image object whose .pil_image() returns a PIL Image."""
+    pil_img = Image.new("RGBA", (w, h), (100, 100, 200, 255))
+    mock_img = MagicMock()
+    mock_img.pil_image.return_value = pil_img
+    return mock_img
+
+
+def test_pixellab_generate_portrait(tmp_path):
+    from pixel_forge.backends.pixellab_character import PixelLabCharacterBackend
+
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.image = _mock_pixellab_image()
+    mock_response.usage = MagicMock(usd=0)
+    mock_client.generate_image_pixflux.return_value = mock_response
+
+    backend = PixelLabCharacterBackend(output_dir=tmp_path, client=mock_client)
+    result = backend.generate_portrait(
+        PortraitRequest(prompt="a knight", reference=None, output_dir=tmp_path)
+    )
+    assert result.path.exists()
+    assert result.path.suffix == ".png"
+    img = Image.open(result.path)
+    assert img.size == (64, 64)
+    # Verify generate_image_pixflux was called with south direction for portrait
+    call_kwargs = mock_client.generate_image_pixflux.call_args
+    assert call_kwargs.kwargs["direction"] == "south"
+
+
+def test_pixellab_generate_walking_sheet(tmp_path):
+    """Walking sheet: generate east base, rotate x3, animate x4, convert pack."""
+    from pixel_forge.backends.pixellab_character import PixelLabCharacterBackend
+
+    mock_client = MagicMock()
+
+    # generate_image_pixflux → east-facing base
+    base_resp = MagicMock()
+    base_resp.image = _mock_pixellab_image()
+    base_resp.usage = MagicMock(usd=0)
+    mock_client.generate_image_pixflux.return_value = base_resp
+
+    # rotate → north, west, south
+    rotate_resp = MagicMock()
+    rotate_resp.image = _mock_pixellab_image()
+    rotate_resp.usage = MagicMock(usd=0)
+    mock_client.rotate.return_value = rotate_resp
+
+    # animate_with_text → 6 frames per direction (returns 4, pipeline extends)
+    anim_resp = MagicMock()
+    anim_resp.images = [_mock_pixellab_image() for _ in range(4)]
+    anim_resp.usage = MagicMock(usd=0)
+    mock_client.animate_with_text.return_value = anim_resp
+
+    backend = PixelLabCharacterBackend(output_dir=tmp_path, client=mock_client)
+    result = backend.generate_walking_sheet(
+        WalkingSheetRequest(prompt="a knight", reference=None, output_dir=tmp_path)
+    )
+
+    # Sheet should exist
+    assert result.sheet_path.exists()
+    assert result.sheet_path.suffix == ".png"
+
+    # Dims should match PERSON_PREMADE layout
+    assert result.dims["cell"] == [32, 64]
+    assert result.dims["cols"] == 56
+    assert result.dims["rows"] == 3
+    assert result.dims["direction_order"] == ["right", "up", "left", "down"]
+    assert result.dims["frames_per_dir"] == 6
+
+    # Verify API call counts: 1 generate + 3 rotates + 4 animates
+    assert mock_client.generate_image_pixflux.call_count == 1
+    assert mock_client.rotate.call_count == 3
+    assert mock_client.animate_with_text.call_count == 4
+
+
+def test_pixellab_generate_action_sheets(tmp_path):
+    """Action sheets: PixelLab has no action endpoint, returns empty dict."""
+    from pixel_forge.backends.pixellab_character import PixelLabCharacterBackend
+
+    mock_client = MagicMock()
+    backend = PixelLabCharacterBackend(output_dir=tmp_path, client=mock_client)
+    result = backend.generate_action_sheets(
+        ActionSheetsRequest(prompt="a knight", reference=None, output_dir=tmp_path)
+    )
+    assert result.sheets == {}
+
+
+def test_pixellab_portrait_with_reference(tmp_path):
+    """Portrait generation should pass reference image to generate_image_pixflux."""
+    from pixel_forge.backends.pixellab_character import PixelLabCharacterBackend
+
+    # Create a reference image file
+    ref_path = tmp_path / "ref.png"
+    Image.new("RGBA", (64, 64), (255, 0, 0, 255)).save(ref_path)
+
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.image = _mock_pixellab_image()
+    mock_response.usage = MagicMock(usd=0)
+    mock_client.generate_image_pixflux.return_value = mock_response
+
+    backend = PixelLabCharacterBackend(output_dir=tmp_path, client=mock_client)
+    result = backend.generate_portrait(
+        PortraitRequest(prompt="a knight", reference=ref_path, output_dir=tmp_path)
+    )
+    assert result.path.exists()
+    # When reference is provided, style_image kwarg should be passed
+    call_kwargs = mock_client.generate_image_pixflux.call_args.kwargs
+    assert "style_image" in call_kwargs

@@ -38,8 +38,6 @@ from pixel_forge.paths import KIND_TO_SUBDIR, REJECTED_SUBDIR, ProjectPaths
 from pixel_forge.sheet import (
     SHEET_PROFILES,
     SheetRequest,
-    WalkRefineRequest,
-    refine_sheet_walk,
     run as sheet_run,
 )
 from pixel_forge.actions import (
@@ -584,82 +582,6 @@ def _cmd_sheet(args: argparse.Namespace) -> int:
     return 0 if not result.errors else 3
 
 
-def _cmd_sheet_refine_walk(args: argparse.Namespace) -> int:
-    """Regenerate the walk row of an existing sheet, one direction at a time.
-
-    Input is an already-generated clean sheet (e.g. from `pf sheet` or
-    `pf bundle`) whose walk row is imperfect. Output is a new PNG in the
-    same output directory with the walk row replaced by 4 per-direction
-    strips, each generated in its own Gemini call with the base sheet's
-    idle strip as an identity anchor.
-    """
-    projects_root = Path(args.projects_root).resolve()
-    project_dir = projects_root / args.project
-    try:
-        project = load_project(project_dir)
-    except ProjectConfigError as err:
-        print(json.dumps({"error": str(err)}), file=sys.stderr)
-        return 2
-
-    if args.profile not in SHEET_PROFILES:
-        print(
-            json.dumps({"error": f"unknown profile {args.profile!r}"}),
-            file=sys.stderr,
-        )
-        return 2
-    profile = SHEET_PROFILES[args.profile]
-
-    base_sheet = Path(args.base_sheet).expanduser().resolve()
-    if not base_sheet.is_file():
-        print(
-            json.dumps({"error": f"--base-sheet not found: {base_sheet}"}),
-            file=sys.stderr,
-        )
-        return 2
-
-    layout_ref = Path(args.layout_reference).expanduser().resolve()
-    if not layout_ref.is_file():
-        print(
-            json.dumps({"error": f"--layout-reference not found: {layout_ref}"}),
-            file=sys.stderr,
-        )
-        return 2
-
-    try:
-        result = refine_sheet_walk(
-            WalkRefineRequest(
-                project=project,
-                profile=profile,
-                base_sheet=base_sheet,
-                prompt=args.prompt,
-                layout_reference=layout_ref,
-                variants=args.variants,
-            )
-        )
-    except Exception as err:  # noqa: BLE001 - top-level CLI boundary
-        print(
-            json.dumps({"error": f"{type(err).__name__}: {err}"}),
-            file=sys.stderr,
-        )
-        return 3
-
-    payload = {
-        "variants": [
-            {
-                "path": str(v.clean_path),
-                "sidecar_path": str(v.sidecar_path),
-                "final_size": list(v.final_size),
-                "passed": True,
-            }
-            for v in result.variants
-        ],
-        "errors": result.errors,
-        "usage": _usage_as_dict(result.usage),
-    }
-    print(json.dumps(payload))
-    return 0 if not result.errors else 3
-
-
 def _usage_as_dict(u: "UsageRecord | None") -> dict:
     """Flatten a UsageRecord into the JSON shape the CLI payload emits.
 
@@ -1195,72 +1117,6 @@ def _cmd_bundle(args: argparse.Namespace) -> int:
                             ok=True,
                             usage=_usage_as_dict(sres.usage),
                         )
-
-                        # Optional post-step: regenerate the walk row
-                        # direction-by-direction. Uses the just-generated
-                        # walking.png as base_sheet (idle row = identity
-                        # anchor) and the same walking_ref as layout anchor.
-                        if args.refine_walk:
-                            _emit_progress(
-                                "pipe_start",
-                                variant=v_idx + 1,
-                                pipe="walk_refine",
-                            )
-                            try:
-                                rres = refine_sheet_walk(
-                                    WalkRefineRequest(
-                                        project=project,
-                                        profile=profile,
-                                        base_sheet=dst,
-                                        prompt=args.prompt,
-                                        layout_reference=walking_ref,
-                                        variants=1,
-                                    )
-                                )
-                                if rres.variants:
-                                    refined_src = rres.variants[0].clean_path
-                                    shutil.copyfile(refined_src, dst)
-                                    refined_meta = rres.variants[0].sidecar_path
-                                    if refined_meta.is_file():
-                                        shutil.copyfile(
-                                            refined_meta,
-                                            bdir / "walking.meta.json",
-                                        )
-                                    pipes_report["walking"]["refined"] = True
-                                    pipes_report["walking"]["refine_errors"] = rres.errors
-                                else:
-                                    pipes_report["walking"]["refined"] = False
-                                    pipes_report["walking"]["refine_errors"] = (
-                                        rres.errors or ["no refined variants"]
-                                    )
-                                if rres.usage is not None:
-                                    cur = pipe_usage["walking"]
-                                    if cur is None:
-                                        pipe_usage["walking"] = rres.usage
-                                    else:
-                                        cur.prompt_tokens += rres.usage.prompt_tokens
-                                        cur.output_tokens += rres.usage.output_tokens
-                                        cur.total_tokens += rres.usage.total_tokens
-                                        cur.call_count += rres.usage.call_count
-                                _emit_progress(
-                                    "pipe_done",
-                                    variant=v_idx + 1,
-                                    pipe="walk_refine",
-                                    ok=bool(rres.variants),
-                                    usage=_usage_as_dict(rres.usage),
-                                )
-                            except Exception as err:  # noqa: BLE001
-                                rmsg = f"{type(err).__name__}: {err}"
-                                pipes_report["walking"]["refined"] = False
-                                pipes_report["walking"]["refine_errors"] = [rmsg]
-                                errors.append(f"walk_refine: {rmsg}")
-                                _emit_progress(
-                                    "pipe_done",
-                                    variant=v_idx + 1,
-                                    pipe="walk_refine",
-                                    ok=False,
-                                    error=rmsg,
-                                )
                     except Exception as err:  # noqa: BLE001
                         msg = f"{type(err).__name__}: {err}"
                         errors.append(f"walking: {msg}")
@@ -1733,52 +1589,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sh.set_defaults(func=_cmd_sheet)
 
-    srw = sub.add_parser(
-        "sheet-refine-walk",
-        help=(
-            "Regenerate the walk row of an existing sheet one direction "
-            "at a time, using the base sheet's idle strip as identity anchor"
-        ),
-    )
-    srw.add_argument("--projects-root", default="projects")
-    srw.add_argument("--project", required=True)
-    srw.add_argument(
-        "--profile",
-        required=True,
-        choices=sorted(SHEET_PROFILES),
-        help="Sheet contract profile (person-premade recommended)",
-    )
-    srw.add_argument(
-        "--base-sheet",
-        required=True,
-        help="Absolute path to an existing clean sheet PNG to refine",
-    )
-    srw.add_argument(
-        "--layout-reference",
-        required=True,
-        help=(
-            "Absolute path to a known-good premade-style sheet whose walk "
-            "row is used as the layout/style anchor for each direction"
-        ),
-    )
-    srw.add_argument(
-        "--prompt",
-        required=True,
-        help="Character description (same vocabulary as pf sheet --prompt)",
-    )
-    srw.add_argument(
-        "--variants",
-        type=int,
-        default=1,
-        help=(
-            "Number of candidate composites to assemble (K). Each "
-            "direction's generate() call produces K candidates in one "
-            "API call, so total Gemini calls = 4, not 4*K — but cost per "
-            "call scales with K."
-        ),
-    )
-    srw.set_defaults(func=_cmd_sheet_refine_walk)
-
     bundle = sub.add_parser(
         "bundle",
         help="Build a 3-pipe character bundle (portrait + walking + actions)",
@@ -1820,16 +1630,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-walking",
         action="store_true",
         help="Skip pipe 2 (walking sheet generation)",
-    )
-    bundle.add_argument(
-        "--refine-walk",
-        action="store_true",
-        help=(
-            "After pipe 2 succeeds, regenerate the walk row one direction "
-            "at a time (4 extra Gemini calls per variant) using the just-"
-            "generated idle row as the identity anchor. Improves walk "
-            "cycle quality at the cost of 4x the walking-pipe API calls."
-        ),
     )
     bundle.add_argument(
         "--backend",

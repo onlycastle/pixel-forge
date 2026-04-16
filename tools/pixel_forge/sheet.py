@@ -17,6 +17,26 @@ This module is invoked by `pf sheet` and by the asset-forge GUI's
 "animated sheet" output mode. It does NOT touch the existing
 single-frame `pf generate` path - that one stays exactly as it was for
 concept art / static decoration use.
+
+KNOWN ISSUE — full-sheet off-contract output (TODO: port per-direction
+strip generation from actions._extract_action_row):
+
+  Gemini 2.5 Flash Image often ignores the reference image's aspect
+  ratio and produces a ~1024x1024 canvas with ~8x4 cells instead of the
+  profile-requested 56x3 layout. sheet_extract then "successfully"
+  picks that 8x4 grid and emits a 256x256 clean sheet — structurally
+  valid but geometrically wrong for downstream loaders that index by
+  the profile's target_cols. The actions pipeline already solved this
+  exact problem by splitting each action into per-direction, single-row
+  strip generations and using content-band detection instead of naive
+  grid fitting (see actions._extract_action_row + _find_content_bands).
+
+  Until the full-sheet path is ported to the same per-direction 2-row
+  strip pattern (idle row + walk row stacked, 192x128 per direction,
+  4 calls total), pipe 2 outputs remain unreliable. `run()` below
+  surfaces this as a loud "contract_drift" warning in the sidecar +
+  SheetResult.errors so callers know when they got an off-contract
+  output.
 """
 from __future__ import annotations
 
@@ -36,6 +56,7 @@ from pixel_forge.assets import (
 from pixel_forge.backends.gemini import GeminiBackend
 from pixel_forge.paths import ProjectPaths
 from pixel_forge.project import Project
+from pixel_forge.usage import UsageRecord
 from pixel_forge.sheet_extract import (
     ExtractRequest,
     ExtractResult,
@@ -56,6 +77,11 @@ class SheetProfile:
     label_mask_box: tuple[int, int, int, int]  # mask coords on reference
     direction_order: tuple[str, ...] = ("right", "up", "left", "down")
     locomotion_rows: dict[str, int] | None = None
+    # Number of frames per direction in the idle/walk rows. Used by the
+    # per-direction walk-refine pipeline to know how wide each direction's
+    # strip is. None = pipeline assumes 6 (the shared default for both
+    # livestock24 and premade layouts today).
+    frames_per_dir: int | None = None
     # Additional STYLE reference images (relative paths under the
     # sunny-street public/ tree) that get sent to Gemini alongside the
     # primary layout reference. More references = richer style signal
@@ -75,6 +101,7 @@ ANIMAL_LIVESTOCK24 = SheetProfile(
     target_rows=4,
     label_mask_box=(0, 0, 120, 24),
     locomotion_rows={"idle": 0, "walk": 1},
+    frames_per_dir=6,
     # Additional 32x32 livestock animals as style anchors. All share
     # the livestock24 layout so they reinforce the grid + style signal.
     style_references=(
@@ -98,6 +125,7 @@ PERSON_PREMADE = SheetProfile(
     # Modern_Farm sheets), so the mask is a no-op rectangle.
     label_mask_box=(0, 0, 0, 0),
     locomotion_rows={"preview": 0, "idle": 1, "walk": 2},
+    frames_per_dir=6,
     # Three additional premade sheets act as style anchors. They all
     # share the exact same layout and pixel-art style; showing Gemini
     # multiple examples of "this is what a townsperson sprite sheet
@@ -160,6 +188,7 @@ class SheetVariant:
 class SheetResult:
     variants: list[SheetVariant]
     errors: list[str]
+    usage: "UsageRecord | None" = None
 
 
 def _build_sheet_prompt(profile: SheetProfile, subject: str) -> str:
@@ -350,6 +379,7 @@ def run(request: SheetRequest) -> SheetResult:
         refs=refs,
         n=request.variants,
     )
+    backend_usage: UsageRecord | None = getattr(backend, "last_usage", None)
 
     slug = _slugify(request.prompt)
     ts = _timestamp()
@@ -369,6 +399,46 @@ def run(request: SheetRequest) -> SheetResult:
         except Exception as err:  # noqa: BLE001
             errors.append(f"variant {idx} extract failed: {err}")
             continue
+
+        # Contract check — Gemini 2.5 Flash Image often ignores the
+        # reference image's aspect ratio and produces a ~1024x1024 canvas
+        # regardless of what we sent. When that happens, sheet_extract's
+        # heuristic lands on a grid totally different from what the
+        # profile requested (e.g. 8x4 instead of 56x3). Downstream loaders
+        # that index by the profile's target_cols will be catastrophically
+        # misaligned, so we surface this as a loud non-fatal warning in
+        # both the sidecar and the caller-visible errors list. The long-
+        # term fix is to generate this sheet per-direction via a 2-row
+        # strip pipeline mirroring actions._extract_action_row; until
+        # that lands, the warning at least tells callers + UIs that the
+        # output is off-contract.
+        contract_drift: dict | None = None
+        tc = request.profile.target_cols
+        tr = request.profile.target_rows
+        dc = extracted.detected_cols
+        dr = extracted.detected_rows
+        col_drift = abs(dc - tc) / max(1, tc)
+        row_drift = abs(dr - tr) / max(1, tr)
+        if col_drift >= 0.5 or row_drift >= 0.5:
+            contract_drift = {
+                "severity": "major",
+                "expected_cols": tc,
+                "expected_rows": tr,
+                "detected_cols": dc,
+                "detected_rows": dr,
+                "col_drift_ratio": round(col_drift, 3),
+                "row_drift_ratio": round(row_drift, 3),
+                "note": (
+                    f"detected grid {dc}x{dr} differs from profile "
+                    f"contract {tc}x{tr} by >=50%; downstream loaders "
+                    "indexing by profile target will be misaligned"
+                ),
+            }
+            errors.append(
+                f"variant {idx} contract drift: detected {dc}x{dr} vs "
+                f"profile {tc}x{tr} (col_drift={col_drift:.0%}, "
+                f"row_drift={row_drift:.0%})"
+            )
 
         clean_name = f"{slug}-{ts}-v{idx}.png"
         clean_path = out_dir / clean_name
@@ -406,6 +476,7 @@ def run(request: SheetRequest) -> SheetResult:
                 "locomotion_rows": dict(request.profile.locomotion_rows or {}),
                 "raw_source": str(raw_path),
                 "raw_sha1": hashlib.sha1(raw_path.read_bytes()).hexdigest(),
+                **({"contract_drift": contract_drift} if contract_drift else {}),
             },
         )
         sidecar_path = save_sidecar(clean_path, sidecar)
@@ -421,4 +492,4 @@ def run(request: SheetRequest) -> SheetResult:
             )
         )
 
-    return SheetResult(variants=variants, errors=errors)
+    return SheetResult(variants=variants, errors=errors, usage=backend_usage)

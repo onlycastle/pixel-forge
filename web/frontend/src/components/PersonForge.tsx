@@ -49,9 +49,49 @@ export function PersonForge() {
       (event) => {
         setProgressLog((prev) => [...prev, JSON.stringify(event)]);
       },
-      (_result) => {
+      (result: unknown) => {
         setIsGenerating(false);
         setProgressLog((prev) => [...prev, "Generation complete."]);
+        // Parse the pf bundle stdout payload to populate variant URLs.
+        // Shape: { bundle_dir, bundles: [{ bundle_dir, pipes: { portrait, walking, actions } }], ... }
+        try {
+          const r = result as Record<string, unknown>;
+          const bundles = (r.bundles ?? []) as Record<string, unknown>[];
+          setResults((prev) =>
+            prev.map((v, i) => {
+              const b = bundles[i] as Record<string, unknown> | undefined;
+              if (!b) return { ...v, status: "error" as const, error: "no bundle data" };
+              const bdir = String(b.bundle_dir ?? "");
+              const pipes = (b.pipes ?? {}) as Record<string, Record<string, unknown>>;
+              const portraitPath = pipes.portrait?.ok ? `${bdir}/portrait.png` : null;
+              const walkPipes = pipes.walking;
+              const walkPath = walkPipes?.ok ? `${bdir}/${walkPipes.path ?? "walk.png"}` : null;
+              const walkDims = walkPipes?.dims as import("../types").WalkDims | null ?? null;
+              const actionSheets: Record<string, string> = {};
+              if (pipes.actions) {
+                for (const [key, info] of Object.entries(pipes.actions)) {
+                  const ai = info as Record<string, unknown>;
+                  if (ai.ok && ai.path) {
+                    actionSheets[key] = `${bdir}/actions/${ai.path}`;
+                  }
+                }
+              }
+              return {
+                ...v,
+                slug: String(b.slug ?? ""),
+                portraitUrl: portraitPath ? `/api/preview?path=${encodeURIComponent(portraitPath)}` : null,
+                walkSheetUrl: walkPath ? `/api/preview?path=${encodeURIComponent(walkPath)}` : null,
+                walkDims,
+                actionSheets: Object.fromEntries(
+                  Object.entries(actionSheets).map(([k, p]) => [k, `/api/preview?path=${encodeURIComponent(p)}`]),
+                ),
+                status: "done" as const,
+              };
+            }),
+          );
+        } catch (e) {
+          setProgressLog((prev) => [...prev, `Parse error: ${e}`]);
+        }
       },
       (error) => {
         setIsGenerating(false);

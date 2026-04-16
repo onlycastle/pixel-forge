@@ -120,12 +120,16 @@ async def generate(
     )
 
 
-@app.get("/preview/{path:path}")
-async def preview(path: str):
-    full = OUTPUT_DIR / path
+@app.get("/api/preview")
+async def preview(path: str = ""):
+    """Serve a generated image by absolute path (query param)."""
+    if not path:
+        raise HTTPException(400, "path required")
+    full = Path(path)
     if not full.is_file():
-        raise HTTPException(404, f"file not found: {path}")
-    return FileResponse(full, media_type="image/png")
+        raise HTTPException(404, f"not found: {path}")
+    mime = "image/png" if full.suffix == ".png" else "application/octet-stream"
+    return FileResponse(full, media_type=mime)
 
 
 @app.post("/api/save")

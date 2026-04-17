@@ -24,6 +24,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from pixel_forge.backends.gemini_text import analyze_map
+from pixel_forge.project import load_project
+
 app = FastAPI(title="Pixel Forge — Asset Forge")
 
 app.add_middleware(
@@ -151,6 +154,106 @@ async def save(
     else:
         shutil.copy2(src, dst)
     return {"status": "saved", "destination": str(dst)}
+
+
+@app.post("/api/analyze-map")
+async def analyze_map_endpoint(
+    map_image: UploadFile = File(...),
+):
+    """Send a map screenshot to Gemini for placeable-object suggestions."""
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    map_path = OUTPUT_DIR / f"_map_{int(_time.time()):x}.png"
+    map_path.write_bytes(await map_image.read())
+
+    try:
+        project_root = Path(__file__).resolve().parent.parent / "projects" / PF_PROJECT
+        project = load_project(project_root)
+        palette_hex = [f"#{r:02x}{g:02x}{b:02x}" for r, g, b in project.palette]
+        result = analyze_map(
+            map_image_path=str(map_path),
+            prose=project.prose,
+            palette_hex=palette_hex,
+        )
+        return result
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
+@app.post("/api/generate-placeables")
+async def generate_placeables(
+    items: str = Form(...),
+    map_image: UploadFile | None = File(None),
+    variants: int = Form(1),
+):
+    """Generate placeable assets for a list of items, streaming progress via SSE."""
+    if not 1 <= variants <= 4:
+        raise HTTPException(400, "variants must be 1-4")
+
+    try:
+        item_list = json.loads(items)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(400, f"invalid items JSON: {exc}") from exc
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    ref_path: str | None = None
+    if map_image is not None:
+        ref_tmp = OUTPUT_DIR / f"_map_ref_{int(_time.time()):x}.png"
+        ref_tmp.write_bytes(await map_image.read())
+        ref_path = str(ref_tmp)
+
+    total = len(item_list)
+
+    async def event_stream():
+        for idx, item in enumerate(item_list):
+            name = item.get("name", f"item-{idx}")
+            prompt = item.get("prompt", name)
+            footprint = item.get("footprint", "1x1")
+
+            yield (
+                f"data: {json.dumps({'event': 'progress', 'item': name, 'index': idx, 'total': total, 'status': 'generating'})}\n\n"
+            )
+
+            cmd = [
+                PF_BIN, "generate",
+                "--project", PF_PROJECT,
+                "--kind", "placeable",
+                "--footprint", footprint,
+                "--prompt", prompt,
+                "--variants", str(variants),
+            ]
+            if ref_path:
+                cmd.extend(["--ref-image", ref_path])
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(Path(__file__).resolve().parent.parent),
+            )
+            stdout_bytes = await proc.stdout.read()
+            await proc.wait()
+
+            result: dict = {}
+            if stdout_bytes:
+                try:
+                    result = json.loads(stdout_bytes)
+                except json.JSONDecodeError:
+                    result = {"raw": stdout_bytes.decode()}
+            if proc.returncode and proc.returncode != 0 and not result:
+                result = {"error": f"pf generate exited with code {proc.returncode}"}
+
+            yield (
+                f"data: {json.dumps({'event': 'item_done', 'item': name, 'index': idx, 'result': result})}\n\n"
+            )
+
+        yield f"data: {json.dumps({'event': 'done'})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # Serve frontend static files in production

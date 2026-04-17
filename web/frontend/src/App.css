@@ -28,3 +28,32 @@ body {
   color: #888;
   font-size: 14px;
 }
+.app__tabs {
+  display: flex;
+  gap: 0;
+  margin-left: auto;
+}
+.app__tab {
+  padding: 8px 20px;
+  background: transparent;
+  color: #888;
+  border: 1px solid #333;
+  border-bottom: none;
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.app__tab:first-child {
+  border-radius: 6px 0 0 0;
+}
+.app__tab:last-child {
+  border-radius: 0 6px 0 0;
+}
+.app__tab--active {
+  color: #eee;
+  background: #1a1a1a;
+  border-color: #555;
+}
+.app__tab:hover:not(.app__tab--active) {
+  color: #ccc;
+}

@@ -48,3 +48,30 @@ export interface ProgressEvent {
   pipe?: string;
   [key: string]: unknown;
 }
+
+// ── Placeable Forge types ────────────────────────
+
+export interface PlaceableSuggestion {
+  name: string;
+  prompt: string;
+  footprint: [number, number];
+  category: string;
+}
+
+export interface AnalysisResult {
+  map_description: string;
+  suggestions: PlaceableSuggestion[];
+}
+
+export interface PlaceableVariantResult {
+  path: string;
+  sidecar_path: string;
+}
+
+export interface PlaceableItemResult {
+  name: string;
+  footprint: [number, number];
+  ok: boolean;
+  variants: PlaceableVariantResult[];
+  error?: string;
+}

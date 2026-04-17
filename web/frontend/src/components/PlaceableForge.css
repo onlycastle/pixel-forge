@@ -169,3 +169,88 @@
 .placeable-results__save-all:hover {
   background: #5b5bff;
 }
+
+/* ── PlaceableForge step chrome ──────────────────── */
+
+.placeable-forge__back {
+  padding: 6px 14px;
+  background: transparent;
+  color: #888;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+.placeable-forge__back:hover {
+  color: #ccc;
+  border-color: #666;
+}
+.placeable-forge__error {
+  background: #3a1111;
+  border: 1px solid #e55;
+  border-radius: 4px;
+  padding: 8px 12px;
+  color: #e88;
+  font-size: 13px;
+}
+.placeable-forge__upload {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 600px;
+}
+.placeable-forge__analyze-btn,
+.placeable-forge__generate-btn {
+  padding: 10px 20px;
+  background: #4a4aff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+.placeable-forge__analyze-btn:disabled,
+.placeable-forge__generate-btn:disabled {
+  background: #333;
+  color: #666;
+  cursor: not-allowed;
+}
+.placeable-forge__select {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 600px;
+}
+.placeable-forge__gen-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+.placeable-forge__label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #ccc;
+  font-size: 14px;
+}
+.placeable-forge__log {
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 8px;
+  margin-top: 16px;
+}
+.placeable-forge__log summary {
+  color: #888;
+  cursor: pointer;
+  font-size: 12px;
+}
+.placeable-forge__log pre {
+  color: #666;
+  font-size: 11px;
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 8px 0 0;
+}

@@ -73,5 +73,6 @@ export interface PlaceableItemResult {
   footprint: [number, number];
   ok: boolean;
   variants: PlaceableVariantResult[];
+  status: "pending" | "generating" | "done" | "error";
   error?: string;
 }

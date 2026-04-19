@@ -65,6 +65,7 @@ export function PlaceableForge() {
         footprint: s.footprint,
         ok: false,
         variants: [],
+        status: "pending" as const,
       })),
     );
     setStep("results");
@@ -73,11 +74,20 @@ export function PlaceableForge() {
       { items, mapImage: mapFile ?? undefined, variants },
       (event: ProgressEvent) => {
         setProgressLog((prev) => [...prev, JSON.stringify(event)]);
-        if (event.event === "item_done") {
+        if (event.event === "progress") {
+          const idx = (event as Record<string, unknown>).index as number;
+          setResults((prev) =>
+            prev.map((r, i) => (i === idx ? { ...r, status: "generating" as const } : r)),
+          );
+        } else if (event.event === "item_done") {
           const itemResult = (event as Record<string, unknown>).result as PlaceableItemResult;
           const idx = (event as Record<string, unknown>).index as number;
           setResults((prev) =>
-            prev.map((r, i) => (i === idx ? { ...r, ...itemResult } : r)),
+            prev.map((r, i) =>
+              i === idx
+                ? { ...r, ...itemResult, status: itemResult.ok ? "done" as const : "error" as const }
+                : r,
+            ),
           );
         }
       },

@@ -13,13 +13,25 @@ export function PlaceableResultGrid({
 }: PlaceableResultGridProps) {
   if (results.length === 0) return null;
 
-  const allDone = results.every((r) => r.ok || r.error);
+  const doneCount = results.filter((r) => r.status === "done" || r.status === "error").length;
+  const allDone = doneCount === results.length;
+  const currentIndex = results.findIndex((r) => r.status === "generating");
 
   return (
     <div className="placeable-results">
+      <div className="placeable-results__status-bar">
+        {allDone
+          ? `All ${results.length} items complete`
+          : currentIndex >= 0
+            ? `Generating ${currentIndex + 1} of ${results.length}: ${results[currentIndex].name}...`
+            : `${doneCount} of ${results.length} complete`}
+      </div>
       <div className="placeable-results__grid">
         {results.map((r, i) => (
-          <div key={i} className="placeable-results__card">
+          <div
+            key={i}
+            className={`placeable-results__card ${r.status === "generating" ? "placeable-results__card--active" : ""}`}
+          >
             <div className="placeable-results__header">
               <span className="placeable-results__name">{r.name}</span>
               <span className="placeable-results__fp">
@@ -38,8 +50,10 @@ export function PlaceableResultGrid({
                 ))
               ) : r.error ? (
                 <span className="placeable-results__error">{r.error}</span>
+              ) : r.status === "generating" ? (
+                <span className="placeable-results__generating">Generating...</span>
               ) : (
-                <span className="placeable-results__pending">Generating...</span>
+                <span className="placeable-results__pending">Waiting</span>
               )}
             </div>
             {r.ok && (

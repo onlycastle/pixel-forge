@@ -29,21 +29,71 @@ pf migrate-legacy-kinds --project <n>   # one-shot: old tiles/ + props/ → plac
 
 See `docs/2026-04-12-pixel-forge-design.md` in the sunny-street repo for the original design spec.
 
-## Quick start
+## How to run
 
-1. `python3.12 -m venv .venv && source .venv/bin/activate`
-2. `pip install -e ".[dev]"`
-3. `cd web/frontend && npm install && cd ../..`
-4. `cp .env.example .env` and fill in `GEMINI_API_KEY`
-5. `cd` into this repo and run `claude` — the skills in `.claude/skills/` take over from there.
+### Prerequisites
 
-## Web UI (local dev)
+- Python 3.12
+- Node.js + npm
+- A Gemini API key from <https://aistudio.google.com/app/apikey>
+
+### 1. Install the Python package and backend dependencies
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+pip install -r web/requirements.txt
+```
+
+### 2. Install the frontend dependencies
+
+```bash
+cd web/frontend
+npm install
+cd ../..
+```
+
+### 3. Configure environment variables
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and set:
+
+```bash
+GEMINI_API_KEY=your_api_key_here
+```
+
+### 4. Start the local web UI
 
 ```bash
 ./dev.sh
 ```
 
-Starts both servers in one terminal — backend on `:8000`, frontend on `:5173`. Open `http://localhost:5173`.
+The script starts both development servers:
+
+- Backend API: <http://localhost:8000>
+- Frontend UI: <http://localhost:5173>
+
+Open <http://localhost:5173> in your browser. Press `Ctrl+C` in the terminal to stop both servers.
+
+### 5. Run the CLI directly
+
+After activating the virtual environment, you can run `pf` commands from the repository root:
+
+```bash
+source .venv/bin/activate
+pf new-project --name demo --tile-size 32
+pf generate --project demo --kind placeable --footprint 2x1 --prompt "small wooden market stall"
+```
+
+### 6. Use Claude Code skills
+
+From this repository, run `claude`. The markdown skills in `.claude/skills/` provide guided workflows for generating tilesets, placeables, characters, and maps.
+
+## Web UI (local dev)
 
 | Tab | What it does |
 |-----|-------------|

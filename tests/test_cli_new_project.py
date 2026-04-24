@@ -30,9 +30,11 @@ def test_cli_new_project_scaffolds_project_dir(tmp_path: Path) -> None:
     assert (project_dir / "style" / "palette.hex").exists()
     assert (project_dir / "style" / "prose.md").exists()
     assert (project_dir / "style" / "reference").is_dir()
-    assert (project_dir / "out" / "tiles").is_dir()
+    assert (project_dir / "out" / "tilesets" / "ground").is_dir()
+    assert (project_dir / "out" / "tilesets" / "object").is_dir()
+    assert (project_dir / "out" / "placeables").is_dir()
     assert (project_dir / "out" / "characters").is_dir()
-    assert (project_dir / "out" / "props").is_dir()
+    assert (project_dir / "out" / "maps").is_dir()
 
     toml_text = (project_dir / "project.toml").read_text()
     assert 'name = "my-game"' in toml_text

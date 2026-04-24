@@ -29,7 +29,7 @@ v1 scope: one frame, front-facing idle pose, anchored to the project's hero refe
      --variants 4
    ```
 
-6. Parse, filter, Read, describe, present, promote — same N-of-K loop as `pf-generate-tile`.
+6. Parse, filter, Read, describe, present, promote — same N-of-K loop as `pf-generate-tileset` / `pf-generate-placeable`. The generator auto-writes a `<slug>.meta.json` sidecar declaring `kind: character` — no manual sidecar management needed.
 
 7. Canonical name should be the character's role in kebab-case: `hardware-store-clerk.png`, `village-elder.png`.
 

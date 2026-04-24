@@ -1,6 +1,11 @@
 from PIL import Image
 
-from pixel_forge.postprocess import ensure_alpha, quantize_to_palette, snap_to_grid
+from pixel_forge.postprocess import (
+    ensure_alpha,
+    quantize_to_palette,
+    resize_to_tile,
+    snap_to_grid,
+)
 
 
 def test_ensure_alpha_converts_rgb_to_rgba() -> None:
@@ -75,3 +80,31 @@ def test_snap_to_grid_passthrough_when_already_multiple() -> None:
     result = snap_to_grid(img, tile_size=16)
 
     assert result.size == (32, 16)
+
+
+def test_resize_to_tile_downscales_square_gemini_output_to_tile_size() -> None:
+    """Gemini commonly outputs 1024×1024; tile kind must downscale to exactly 32×32."""
+    img = Image.new("RGBA", (1024, 1024), (0, 128, 0, 255))
+
+    result = resize_to_tile(img, tile_size=32)
+
+    assert result.size == (32, 32)
+
+
+def test_resize_to_tile_center_crops_non_square_before_downscale() -> None:
+    """A 1408×736 scene-shaped output must not get non-uniformly stretched."""
+    img = Image.new("RGBA", (1408, 736), (0, 128, 0, 255))
+
+    result = resize_to_tile(img, tile_size=32)
+
+    assert result.size == (32, 32)
+
+
+def test_resize_to_tile_passthrough_when_already_exact() -> None:
+    img = Image.new("RGBA", (32, 32), (0, 128, 0, 255))
+
+    result = resize_to_tile(img, tile_size=32)
+
+    assert result.size == (32, 32)
+    # Passthrough preserves the original pixels exactly — no interpolation.
+    assert result.getpixel((0, 0)) == (0, 128, 0, 255)

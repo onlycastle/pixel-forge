@@ -50,7 +50,9 @@ def test_full_pipeline_new_project_generate_promote(tmp_path: Path) -> None:
             "--project",
             "e2e",
             "--kind",
-            "tile",
+            "ground-tileset",
+            "--sheet",
+            "1x1",
             "--prompt",
             "test grass",
             "--variants",
@@ -91,7 +93,7 @@ def test_full_pipeline_new_project_generate_promote(tmp_path: Path) -> None:
     assert canonical.exists()
     assert canonical.name == "test-grass.png"
 
-    tiles_dir = project_dir / "out" / "tiles"
+    tiles_dir = project_dir / "out" / "tilesets" / "ground"
     remaining_top_level = list(tiles_dir.glob("*.png"))
     assert len(remaining_top_level) == 1
     assert remaining_top_level[0] == canonical

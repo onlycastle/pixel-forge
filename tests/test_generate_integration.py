@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pixel_forge.assets import Footprint, Sheet, load_sidecar
 from pixel_forge.backends.stub import StubBackend
 from pixel_forge.generate import GenerateRequest, run
 from pixel_forge.project import load_project
@@ -49,12 +50,18 @@ def test_generate_runs_pipeline_end_to_end_with_stub(tmp_path: Path) -> None:
     )
 
     result = run(
-        GenerateRequest(project=project, kind="tile", prompt="grass", variants=3),
+        GenerateRequest(
+            project=project,
+            kind="ground-tileset",
+            prompt="grass",
+            variants=3,
+            sheet=Sheet(cols=1, rows=1),
+        ),
         backend=backend,
     )
 
     assert len(result.variants) == 3
-    out_dir = project_dir / "out" / "tiles"
+    out_dir = project_dir / "out" / "tilesets" / "ground"
     for variant in result.variants:
         assert variant.path.exists()
         assert variant.path.parent == out_dir
@@ -62,6 +69,12 @@ def test_generate_runs_pipeline_end_to_end_with_stub(tmp_path: Path) -> None:
         assert variant.validation["grid"] == "pass"
         assert variant.validation["alpha"] == "pass"
         assert variant.passed is True
+        # Sidecar emitted alongside the PNG with the right layer target.
+        sidecar = load_sidecar(variant.path)
+        assert sidecar.kind.value == "ground-tileset"
+        assert sidecar.layer_target == "ground"
+        assert sidecar.sheet == Sheet(cols=1, rows=1)
+        assert sidecar.tile_size == project.tile_size
 
 
 def test_build_prompt_includes_all_three_style_anchor_layers(tmp_path: Path) -> None:
@@ -71,7 +84,12 @@ def test_build_prompt_includes_all_three_style_anchor_layers(tmp_path: Path) -> 
     project_dir = _write_project_with_palette_4(tmp_path)
     project = load_project(project_dir)
 
-    tile_out = _build_prompt(project, "mossy grass", kind="tile")
+    tile_out = _build_prompt(
+        project,
+        "mossy grass",
+        kind="ground-tileset",
+        sheet=Sheet(cols=1, rows=1),
+    )
 
     # Layer 1: prose style guide
     assert project.prose.strip() in tile_out
@@ -80,10 +98,10 @@ def test_build_prompt_includes_all_three_style_anchor_layers(tmp_path: Path) -> 
     assert "Palette (use ONLY these colors)" in tile_out
     # Layer 3: hero reference instruction
     assert "Reference image attached" in tile_out
-    # Task + output dimension (tile-specific)
+    # Task + output dimension (ground-tileset-specific)
     assert "Task: mossy grass" in tile_out
     assert f"{project.tile_size}x{project.tile_size}" in tile_out
-    assert "seamless tile" in tile_out
+    assert "seamless" in tile_out
 
 
 def test_build_prompt_non_tile_kind_has_free_form_output_line(tmp_path: Path) -> None:
@@ -102,6 +120,22 @@ def test_build_prompt_non_tile_kind_has_free_form_output_line(tmp_path: Path) ->
     # But the output line is NOT a fixed NxN square
     assert f"{project.tile_size}x{project.tile_size}" not in char_out
     assert "sized to the subject" in char_out
+
+    # Placeable without an explicit footprint falls back to "sized to the subject"
+    # in whole tile units.
+    place_out = _build_prompt(project, "wooden cart", kind="placeable")
+    assert "sized to the subject" in place_out
+    assert "Task: wooden cart" in place_out
+
+    # Placeable with an explicit footprint bakes the target dimensions into
+    # the prompt so the model aims for the right bounds.
+    place_fp_out = _build_prompt(
+        project,
+        "wooden cart",
+        kind="placeable",
+        footprint=Footprint(w=2, h=1),
+    )
+    assert f"{2*project.tile_size}x{1*project.tile_size}" in place_fp_out
 
 
 def _write_project_without_hero(tmp_path: Path) -> Path:
@@ -158,7 +192,13 @@ def test_generate_runs_without_hero_reference(tmp_path: Path) -> None:
     )
 
     result = run(
-        GenerateRequest(project=project, kind="tile", prompt="grass", variants=2),
+        GenerateRequest(
+            project=project,
+            kind="ground-tileset",
+            prompt="grass",
+            variants=2,
+            sheet=Sheet(cols=1, rows=1),
+        ),
         backend=backend,
     )
 
@@ -178,11 +218,16 @@ def test_build_prompt_omits_reference_line_when_hero_is_none(tmp_path: Path) -> 
     project_dir = _write_project_without_hero(tmp_path)
     project = load_project(project_dir)
 
-    out = _build_prompt(project, "grass", kind="tile")
+    out = _build_prompt(
+        project,
+        "grass",
+        kind="ground-tileset",
+        sheet=Sheet(cols=1, rows=1),
+    )
 
     assert "Reference image attached" not in out
     # Other layers still present
     assert project.prose.strip() in out
     assert "Palette (use ONLY these colors)" in out
     assert "Task: grass" in out
-    assert "seamless tile" in out
+    assert "seamless" in out

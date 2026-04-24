@@ -1,0 +1,41 @@
+{
+  "character": {
+    "id": "e61d9c87-57d2-4cbc-9e1e-d2ad9ca21757",
+    "name": "1974 california girl, wearing red hat, white shirt, blue jean",
+    "prompt": "1974 california girl, wearing red hat, white shirt, blue jean",
+    "size": {
+      "width": 48,
+      "height": 48
+    },
+    "template_id": "mannequin",
+    "directions": 8,
+    "view": "low top-down",
+    "created_at": "2026-04-15T07:50:22.463247+00:00"
+  },
+  "frames": {
+    "rotations": {
+      "south": "rotations/south.png",
+      "south-east": "rotations/south-east.png",
+      "east": "rotations/east.png",
+      "north-east": "rotations/north-east.png",
+      "north": "rotations/north.png",
+      "north-west": "rotations/north-west.png",
+      "west": "rotations/west.png",
+      "south-west": "rotations/south-west.png"
+    },
+    "animations": {
+      "animation-1212a4c6": {
+        "south": [
+          "animations/animation-1212a4c6/south/frame_000.png",
+          "animations/animation-1212a4c6/south/frame_001.png",
+          "animations/animation-1212a4c6/south/frame_002.png",
+          "animations/animation-1212a4c6/south/frame_003.png",
+          "animations/animation-1212a4c6/south/frame_004.png",
+          "animations/animation-1212a4c6/south/frame_005.png"
+        ]
+      }
+    }
+  },
+  "export_version": "2.0",
+  "export_date": "2026-04-15T08:17:47.894824"
+}

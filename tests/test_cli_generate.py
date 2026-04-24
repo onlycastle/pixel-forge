@@ -54,7 +54,9 @@ def test_cli_generate_returns_json_summary(tmp_path: Path) -> None:
             "--project",
             "cli-smoke",
             "--kind",
-            "tile",
+            "ground-tileset",
+            "--sheet",
+            "1x1",
             "--prompt",
             "grass",
             "--variants",
@@ -75,3 +77,38 @@ def test_cli_generate_returns_json_summary(tmp_path: Path) -> None:
         assert v["passed"] is True
         assert v["validation"]["palette"] == "pass"
         assert Path(v["path"]).exists()
+        assert Path(v["sidecar_path"]).exists()
+
+
+def test_cli_generate_rejects_legacy_tile_kind(tmp_path: Path) -> None:
+    projects_root = tmp_path / "projects"
+    projects_root.mkdir()
+    _write_smoke_project(projects_root)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pixel_forge",
+            "generate",
+            "--projects-root",
+            str(projects_root),
+            "--project",
+            "cli-smoke",
+            "--kind",
+            "tile",
+            "--prompt",
+            "grass",
+            "--backend",
+            "stub",
+            "--stub-template",
+            "tests/fixtures/good-tile.png",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    err = json.loads(result.stderr)
+    assert "removed" in err["error"]
+    assert "ground-tileset" in err["error"]

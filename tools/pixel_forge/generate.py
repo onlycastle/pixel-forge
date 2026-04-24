@@ -20,6 +20,7 @@ from pixel_forge.backends.base import ImageBackend
 from pixel_forge.paths import ProjectPaths
 from pixel_forge.postprocess import ensure_alpha, quantize_to_palette, resize_to_tile
 from pixel_forge.project import Project
+from pixel_forge.usage import UsageRecord
 from pixel_forge.validate import check_alpha, check_grid, check_palette
 
 
@@ -70,6 +71,10 @@ class Variant:
 class GenerateResult:
     variants: list[Variant]
     errors: list[str]
+    # Token usage captured from the backend's last generate() call.
+    # May be None when the backend doesn't track usage (older stubs,
+    # external callers wiring a custom backend).
+    usage: "UsageRecord | None" = None
 
 
 class GenerateRequestError(ValueError):
@@ -295,6 +300,10 @@ def run(request: GenerateRequest, backend: ImageBackend) -> GenerateResult:
         refs.append(request.extra_reference)
 
     raw_paths = backend.generate(prompt=prompt, refs=refs, n=request.variants)
+    # Capture backend usage (set by the backend's generate() call).
+    # Missing attribute → None (old backends that don't implement usage
+    # tracking still work; callers handle the None case).
+    backend_usage: UsageRecord | None = getattr(backend, "last_usage", None)
 
     variants: list[Variant] = []
     ts = _timestamp()
@@ -366,4 +375,4 @@ def run(request: GenerateRequest, backend: ImageBackend) -> GenerateResult:
             )
         )
 
-    return GenerateResult(variants=variants, errors=[])
+    return GenerateResult(variants=variants, errors=[], usage=backend_usage)

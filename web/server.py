@@ -208,7 +208,8 @@ async def generate_placeables(
         for idx, item in enumerate(item_list):
             name = item.get("name", f"item-{idx}")
             prompt = item.get("prompt", name)
-            footprint = item.get("footprint", "1x1")
+            fp = item.get("footprint", [1, 1])
+            fp_str = f"{fp[0]}x{fp[1]}" if isinstance(fp, list) else str(fp)
 
             yield (
                 f"data: {json.dumps({'event': 'progress', 'item': name, 'index': idx, 'total': total, 'status': 'generating'})}\n\n"
@@ -218,12 +219,15 @@ async def generate_placeables(
                 PF_BIN, "generate",
                 "--project", PF_PROJECT,
                 "--kind", "placeable",
-                "--footprint", footprint,
+                "--footprint", fp_str,
                 "--prompt", prompt,
                 "--variants", str(variants),
             ]
             if ref_path:
                 cmd.extend(["--ref-image", ref_path])
+
+            print(f"[placeable-forge] [{idx+1}/{total}] starting: {name} ({fp_str})", flush=True)
+            print(f"[placeable-forge] cmd: {' '.join(cmd)}", flush=True)
 
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -231,17 +235,38 @@ async def generate_placeables(
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(Path(__file__).resolve().parent.parent),
             )
+
+            # Stream stderr in real-time so the user sees Gemini progress
+            while True:
+                line = await proc.stderr.readline()
+                if not line:
+                    break
+                text = line.decode().strip()
+                if text:
+                    print(f"[placeable-forge] [{name}] {text}", flush=True)
+                    yield f"data: {json.dumps({'event': 'log', 'item': name, 'index': idx, 'message': text})}\n\n"
+
             stdout_bytes = await proc.stdout.read()
             await proc.wait()
 
-            result: dict = {}
+            print(f"[placeable-forge] [{name}] exit={proc.returncode} stdout={len(stdout_bytes)}b", flush=True)
+
+            result: dict = {"name": name, "footprint": fp, "ok": False, "variants": []}
             if stdout_bytes:
                 try:
-                    result = json.loads(stdout_bytes)
+                    parsed = json.loads(stdout_bytes)
+                    variant_list = parsed.get("variants", [])
+                    result["ok"] = len(variant_list) > 0
+                    result["variants"] = [
+                        {"path": str(v.get("path", "")), "sidecar_path": str(v.get("sidecar_path", ""))}
+                        for v in variant_list
+                    ]
                 except json.JSONDecodeError:
-                    result = {"raw": stdout_bytes.decode()}
-            if proc.returncode and proc.returncode != 0 and not result:
-                result = {"error": f"pf generate exited with code {proc.returncode}"}
+                    result["error"] = f"bad JSON: {stdout_bytes.decode()[:200]}"
+                    print(f"[placeable-forge] [{name}] bad JSON: {stdout_bytes.decode()[:200]}", flush=True)
+            if proc.returncode and proc.returncode != 0 and not result.get("ok"):
+                result["error"] = f"pf generate exited with code {proc.returncode}"
+                print(f"[placeable-forge] [{name}] ERROR exit={proc.returncode}", flush=True)
 
             yield (
                 f"data: {json.dumps({'event': 'item_done', 'item': name, 'index': idx, 'result': result})}\n\n"

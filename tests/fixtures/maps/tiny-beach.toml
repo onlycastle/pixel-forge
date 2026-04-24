@@ -1,0 +1,26 @@
+[map]
+name = "tiny-beach"
+tile_size = 16
+width = 8
+height = 6
+
+[map.ground]
+prompt = "warm beach sand"
+sheet = { cols = 1, rows = 1 }
+
+[map.object]
+prompt = "beach rocks and driftwood"
+sheet = { cols = 1, rows = 1 }
+
+[[map.placeables]]
+prompt = "weathered wooden rowboat"
+footprint = { w = 2, h = 1 }
+count = 2
+
+[[map.placeables]]
+prompt = "lighthouse base"
+footprint = { w = 1, h = 2 }
+count = 1
+
+[map.markers]
+suggest = false

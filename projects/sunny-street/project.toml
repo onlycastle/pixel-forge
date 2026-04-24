@@ -1,6 +1,6 @@
 [project]
 name = "sunny-street"
-tile_size = 16
+tile_size = 32
 output_root = "out"
 
 [style]

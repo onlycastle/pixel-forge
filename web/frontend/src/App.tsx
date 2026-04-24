@@ -1,12 +1,28 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PersonForge } from "./components/PersonForge";
 import { PlaceableForge } from "./components/PlaceableForge";
 import "./App.css";
 
 type Tab = "character" | "placeables";
 
+function readTab(): Tab {
+  const h = location.hash.replace("#", "");
+  return h === "placeables" ? "placeables" : "character";
+}
+
 export default function App() {
-  const [tab, setTab] = useState<Tab>("character");
+  const [tab, setTab] = useState<Tab>(readTab);
+
+  const switchTab = useCallback((t: Tab) => {
+    setTab(t);
+    location.hash = t;
+  }, []);
+
+  useEffect(() => {
+    const onHash = () => setTab(readTab());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   return (
     <div className="app">
@@ -15,13 +31,13 @@ export default function App() {
         <nav className="app__tabs">
           <button
             className={`app__tab ${tab === "character" ? "app__tab--active" : ""}`}
-            onClick={() => setTab("character")}
+            onClick={() => switchTab("character")}
           >
             Character
           </button>
           <button
             className={`app__tab ${tab === "placeables" ? "app__tab--active" : ""}`}
-            onClick={() => setTab("placeables")}
+            onClick={() => switchTab("placeables")}
           >
             Placeables
           </button>

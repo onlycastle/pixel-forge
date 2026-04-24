@@ -55,3 +55,23 @@ def snap_to_grid(img: Image.Image, tile_size: int) -> Image.Image:
     if target == img.size:
         return img
     return img.resize(target, Image.Resampling.NEAREST)
+
+
+def resize_to_tile(img: Image.Image, tile_size: int) -> Image.Image:
+    """Center-crop to square then downscale to exactly tile_size × tile_size.
+
+    Gemini's image model outputs at its own native resolution (typically
+    600–1024px), not at the tiny sizes game tiles use. For ``--kind tile``
+    the pipeline therefore has to downscale. We center-crop to square first
+    so non-square outputs (e.g. 1408×736 scenes) don't get non-uniformly
+    stretched, then use LANCZOS because at extreme downscales it averages
+    neighbourhoods smoothly — nearest-neighbour at 32× downscale would just
+    subsample one pixel out of every 1024 and look arbitrary.
+    """
+    side = min(img.width, img.height)
+    left = (img.width - side) // 2
+    top = (img.height - side) // 2
+    cropped = img.crop((left, top, left + side, top + side))
+    if cropped.size == (tile_size, tile_size):
+        return cropped
+    return cropped.resize((tile_size, tile_size), Image.Resampling.LANCZOS)

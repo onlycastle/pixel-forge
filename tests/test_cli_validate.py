@@ -53,6 +53,8 @@ def test_cli_validate_reports_bad_tile_as_fail(tmp_path: Path) -> None:
             "val-test",
             "--path",
             "tests/fixtures/bad-tile.png",
+            "--kind",
+            "ground-tileset",
         ],
         capture_output=True,
         text=True,
@@ -85,7 +87,7 @@ def test_cli_validate_good_tile_passes_all_checks(tmp_path: Path) -> None:
             "--path",
             "tests/fixtures/good-tile.png",
             "--kind",
-            "tile",
+            "ground-tileset",
         ],
         capture_output=True,
         text=True,
@@ -99,7 +101,7 @@ def test_cli_validate_good_tile_passes_all_checks(tmp_path: Path) -> None:
     assert payload["passed"] is True
 
 
-def test_cli_validate_non_tile_kind_marks_grid_na(tmp_path: Path) -> None:
+def test_cli_validate_non_tileset_kind_marks_grid_na(tmp_path: Path) -> None:
     """For --kind character, grid is skipped and reported as 'n/a'."""
     projects_root = tmp_path / "projects"
     projects_root.mkdir()

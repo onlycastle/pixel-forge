@@ -1,0 +1,174 @@
+{
+  "artifacts": [
+    {
+      "id": "spec",
+      "kind": "json",
+      "metadata": {},
+      "path": "spec.json",
+      "role": "input"
+    },
+    {
+      "id": "harness-plan",
+      "kind": "markdown",
+      "metadata": {},
+      "path": "plan.md",
+      "role": "harness-plan"
+    },
+    {
+      "id": "prompt-log",
+      "kind": "markdown",
+      "metadata": {},
+      "path": "prompts.md",
+      "role": "prompt-log"
+    },
+    {
+      "id": "capability-matrix",
+      "kind": "json",
+      "metadata": {},
+      "path": "capability-matrix.json",
+      "role": "capability-matrix"
+    },
+    {
+      "id": "identity",
+      "kind": "image",
+      "metadata": {},
+      "path": "identity.png",
+      "role": "identity"
+    },
+    {
+      "id": "walk-raw",
+      "kind": "image",
+      "metadata": {},
+      "path": "raw/walk.png",
+      "role": "raw-sheet"
+    },
+    {
+      "id": "walk-F01",
+      "kind": "image",
+      "metadata": {},
+      "path": "frames/walk/F01.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F02",
+      "kind": "image",
+      "metadata": {},
+      "path": "frames/walk/F02.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F03",
+      "kind": "image",
+      "metadata": {},
+      "path": "frames/walk/F03.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F04",
+      "kind": "image",
+      "metadata": {},
+      "path": "frames/walk/F04.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F05",
+      "kind": "image",
+      "metadata": {},
+      "path": "frames/walk/F05.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F06",
+      "kind": "image",
+      "metadata": {},
+      "path": "frames/walk/F06.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-sheet",
+      "kind": "image",
+      "metadata": {},
+      "path": "walk.png",
+      "role": "final-sheet"
+    },
+    {
+      "id": "walk-contact",
+      "kind": "image",
+      "metadata": {},
+      "path": "walk-contact.png",
+      "role": "contact-sheet"
+    },
+    {
+      "id": "walk-gif",
+      "kind": "image",
+      "metadata": {},
+      "path": "walk.gif",
+      "role": "preview-gif"
+    },
+    {
+      "id": "walk-validation",
+      "kind": "json",
+      "metadata": {},
+      "path": "walk-validation.json",
+      "role": "validation-report"
+    },
+    {
+      "id": "being-manifest",
+      "kind": "json",
+      "metadata": {},
+      "path": "being-manifest.json",
+      "role": "manifest"
+    },
+    {
+      "id": "learnings",
+      "kind": "markdown",
+      "metadata": {},
+      "path": "learnings.md",
+      "role": "learnings-log"
+    },
+    {
+      "id": "run-summary",
+      "kind": "json",
+      "metadata": {},
+      "path": "run-summary.json",
+      "role": "agent-summary"
+    }
+  ],
+  "created_at": "2026-04-26T01:41:51.220035+00:00",
+  "metadata": {
+    "backend": "stub"
+  },
+  "run_id": "minimal-being-2026-04-26T01:41:51.220035+00:00",
+  "schema_version": 1,
+  "slug": "minimal-being",
+  "spec_path": "spec.json",
+  "stages": [
+    {
+      "artifacts": [
+        "harness-plan",
+        "prompt-log",
+        "capability-matrix"
+      ],
+      "name": "harness",
+      "status": "passed"
+    },
+    {
+      "artifacts": [
+        "identity"
+      ],
+      "name": "identity",
+      "status": "passed"
+    },
+    {
+      "artifacts": [
+        "walk-raw",
+        "walk-sheet",
+        "walk-contact",
+        "walk-gif",
+        "walk-validation"
+      ],
+      "name": "animation:walk",
+      "status": "passed"
+    }
+  ]
+}

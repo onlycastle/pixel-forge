@@ -1,0 +1,37 @@
+{
+  "name": "digital-being",
+  "version": "0.1.0",
+  "description": "Project-local Codex skills for Sunny Street Digital Being asset authoring, runbooks, and offline validation in pixel-forge.",
+  "author": {
+    "name": "Sunny Street",
+    "url": "https://github.com/onlycastle"
+  },
+  "license": "MIT",
+  "keywords": [
+    "pixel-forge",
+    "digital-being",
+    "sunny-street",
+    "skills",
+    "validation"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Digital Being",
+    "shortDescription": "Asset authoring, runbook, and validation skills for pixel-forge Digital Beings.",
+    "longDescription": "A project-local harness for generating, recording, and validating Sunny Street Digital Being asset runs. The plugin uses Codex image generation skills for creative assets, consumes pixel-forge's canonical schemas and deterministic sprite pipeline, and keeps plugin scripts offline.",
+    "developerName": "Sunny Street",
+    "category": "Game Development",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Create a Digital Being character asset pack",
+      "Generate a Digital Being sprite sheet",
+      "Generate Sunny Street props and map assets",
+      "Start a Digital Being run",
+      "Validate this Digital Being run",
+      "Summarize Digital Being artifacts"
+    ]
+  }
+}

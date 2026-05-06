@@ -1,0 +1,111 @@
+{
+  "issues": [
+    {
+      "code": "edge-touch",
+      "details": {
+        "bbox": [
+          5,
+          0,
+          27,
+          32
+        ]
+      },
+      "frame_id": "F01",
+      "message": "F01 foreground touches a forbidden edge",
+      "severity": "warning"
+    },
+    {
+      "code": "edge-touch",
+      "details": {
+        "bbox": [
+          5,
+          0,
+          27,
+          32
+        ]
+      },
+      "frame_id": "F02",
+      "message": "F02 foreground touches a forbidden edge",
+      "severity": "warning"
+    },
+    {
+      "code": "edge-touch",
+      "details": {
+        "bbox": [
+          5,
+          0,
+          27,
+          32
+        ]
+      },
+      "frame_id": "F03",
+      "message": "F03 foreground touches a forbidden edge",
+      "severity": "warning"
+    },
+    {
+      "code": "edge-touch",
+      "details": {
+        "bbox": [
+          5,
+          0,
+          27,
+          32
+        ]
+      },
+      "frame_id": "F04",
+      "message": "F04 foreground touches a forbidden edge",
+      "severity": "warning"
+    },
+    {
+      "code": "edge-touch",
+      "details": {
+        "bbox": [
+          5,
+          0,
+          27,
+          32
+        ]
+      },
+      "frame_id": "F05",
+      "message": "F05 foreground touches a forbidden edge",
+      "severity": "warning"
+    },
+    {
+      "code": "edge-touch",
+      "details": {
+        "bbox": [
+          5,
+          0,
+          27,
+          32
+        ]
+      },
+      "frame_id": "F06",
+      "message": "F06 foreground touches a forbidden edge",
+      "severity": "warning"
+    }
+  ],
+  "metrics": {
+    "bottom_y_values": [
+      32,
+      32,
+      32,
+      32,
+      32,
+      32
+    ],
+    "center_x_values": [
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0
+    ],
+    "error_count": 0,
+    "frame_count": 6,
+    "warning_count": 6
+  },
+  "passed": true,
+  "schema_version": 1
+}

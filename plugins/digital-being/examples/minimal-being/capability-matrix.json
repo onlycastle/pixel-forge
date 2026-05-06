@@ -1,0 +1,42 @@
+{
+  "default_mode": "fixture",
+  "permission_notes": [
+    "Default tests must not require API keys or network access.",
+    "Live providers must declare sandbox and credential requirements.",
+    "Model/provider versions must be recorded in provenance."
+  ],
+  "routes": [
+    {
+      "future_provider": "gpt-image-2",
+      "phase_0_1_provider": "stub",
+      "status": "deferred-live",
+      "task": "identity_reference"
+    },
+    {
+      "future_provider": "gpt-image-2",
+      "phase_0_1_provider": "stub",
+      "status": "deferred-live",
+      "task": "raw_sprite_sheet"
+    },
+    {
+      "future_provider": "remove-bg-compatible-provider",
+      "phase_0_1_provider": "per-crop-deterministic",
+      "status": "active",
+      "task": "background_removal"
+    },
+    {
+      "future_provider": "image2video",
+      "phase_0_1_provider": "not-enabled",
+      "status": "capability-fallback-needed",
+      "task": "walkcycle_repair"
+    },
+    {
+      "future_provider": "deterministic-validator-plus-visual-review",
+      "phase_0_1_provider": "deterministic-validator",
+      "status": "active",
+      "task": "game_readiness_qa"
+    }
+  ],
+  "schema": "pixel-forge.capability-matrix.v1",
+  "slug": "minimal-being"
+}

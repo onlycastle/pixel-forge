@@ -1,0 +1,15 @@
+{
+  "source_repo": "pixel-forge",
+  "source_path": "tools/pixel_forge/schemas/being.py",
+  "source_commit_or_version": "working-tree",
+  "schema_version": 1,
+  "source_of_truth": true,
+  "compatibility_marker": "digital-being-schema-v1",
+  "canonical_paths": {
+    "schema": "tools/pixel_forge/schemas/being.py",
+    "sprite_pipeline": "tools/pixel_forge/sprite_pipeline.py",
+    "pipeline": "tools/pixel_forge/digital_being.py",
+    "cli": "tools/pixel_forge/cli.py",
+    "tests": "tests/test_digital_being.py"
+  }
+}

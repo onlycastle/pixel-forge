@@ -93,6 +93,12 @@ pf generate --project demo --kind placeable --footprint 2x1 --prompt "small wood
 
 From this repository, run `claude`. The markdown skills in `.claude/skills/` provide guided workflows for generating tilesets, placeables, characters, and maps.
 
+### 7. Use the Digital Being Codex plugin
+
+The Sunny Street Digital Being workflow lives in `plugins/digital-being/`. It is a Codex plugin that exposes project-local skills such as `digital-being-assetgen`, `digital-being-spritegen`, `digital-being-worldgen`, and `digital-being-validation`.
+
+For teammate setup and sharing instructions, see `plugins/digital-being/README.md`.
+
 ## Web UI (local dev)
 
 | Tab | What it does |
@@ -104,6 +110,7 @@ From this repository, run `claude`. The markdown skills in `.claude/skills/` pro
 
 - `tools/pixel_forge/` — deterministic Python package (postprocess, validate, backends, CLI)
 - `.claude/skills/` — markdown skills Claude loads to drive the tool
+- `plugins/digital-being/` — Codex plugin with Digital Being skills, references, examples, and offline validators
 - `projects/<name>/` — one folder per project with its own style anchor and `out/`
 - `tests/` — pytest unit and integration tests (no real API calls)
 

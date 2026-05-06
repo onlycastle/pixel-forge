@@ -1,0 +1,159 @@
+{
+  "animations": {
+    "walk": {
+      "anchor": [
+        16,
+        32
+      ],
+      "cols": 3,
+      "direction_order": [],
+      "fps": 8,
+      "frame_size": [
+        32,
+        32
+      ],
+      "frames": [
+        "F01",
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F06"
+      ],
+      "metadata": {
+        "contact_sheet": "walk-contact.png",
+        "preview_gif": "walk.gif",
+        "validation_report": "walk-validation.json"
+      },
+      "name": "walk",
+      "rows": 2,
+      "sheet": "walk.png"
+    }
+  },
+  "artifacts": [
+    {
+      "id": "spec",
+      "kind": "json",
+      "metadata": {},
+      "path": "spec.json",
+      "role": "input"
+    },
+    {
+      "id": "harness-plan",
+      "kind": "markdown",
+      "metadata": {},
+      "path": "plan.md",
+      "role": "harness-plan"
+    },
+    {
+      "id": "prompt-log",
+      "kind": "markdown",
+      "metadata": {},
+      "path": "prompts.md",
+      "role": "prompt-log"
+    },
+    {
+      "id": "capability-matrix",
+      "kind": "json",
+      "metadata": {},
+      "path": "capability-matrix.json",
+      "role": "capability-matrix"
+    },
+    {
+      "id": "identity",
+      "kind": "image",
+      "metadata": {},
+      "path": "identity.png",
+      "role": "identity"
+    },
+    {
+      "id": "walk-raw",
+      "kind": "image",
+      "metadata": {},
+      "path": "raw/walk.png",
+      "role": "raw-sheet"
+    },
+    {
+      "id": "walk-F01",
+      "kind": "image",
+      "metadata": {},
+      "path": "frames/walk/F01.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F02",
+      "kind": "image",
+      "metadata": {},
+      "path": "frames/walk/F02.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F03",
+      "kind": "image",
+      "metadata": {},
+      "path": "frames/walk/F03.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F04",
+      "kind": "image",
+      "metadata": {},
+      "path": "frames/walk/F04.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F05",
+      "kind": "image",
+      "metadata": {},
+      "path": "frames/walk/F05.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F06",
+      "kind": "image",
+      "metadata": {},
+      "path": "frames/walk/F06.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-sheet",
+      "kind": "image",
+      "metadata": {},
+      "path": "walk.png",
+      "role": "final-sheet"
+    },
+    {
+      "id": "walk-contact",
+      "kind": "image",
+      "metadata": {},
+      "path": "walk-contact.png",
+      "role": "contact-sheet"
+    },
+    {
+      "id": "walk-gif",
+      "kind": "image",
+      "metadata": {},
+      "path": "walk.gif",
+      "role": "preview-gif"
+    },
+    {
+      "id": "walk-validation",
+      "kind": "json",
+      "metadata": {},
+      "path": "walk-validation.json",
+      "role": "validation-report"
+    }
+  ],
+  "created_at": "2026-04-26T01:41:51.220035+00:00",
+  "export_target": "sunny-street",
+  "identity": "identity.png",
+  "prompt": "minimal sunny street digital being",
+  "provenance": {
+    "backend": "stub",
+    "notes": "Synthetic raw spritesheet normalized through deterministic pipeline.",
+    "pipeline": "digital-being"
+  },
+  "schema_version": 1,
+  "slug": "minimal-being",
+  "validation_report": "walk-validation.json"
+}

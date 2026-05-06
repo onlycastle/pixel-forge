@@ -1,0 +1,31 @@
+{
+  "animations": [
+    {
+      "cols": 3,
+      "direction_order": [],
+      "fps": 8,
+      "frame_order": [
+        "F01",
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F06"
+      ],
+      "frame_size": [
+        32,
+        32
+      ],
+      "name": "walk",
+      "rows": 2
+    }
+  ],
+  "export_target": "sunny-street",
+  "metadata": {
+    "generator": "digital-being-stub"
+  },
+  "prompt": "minimal sunny street digital being",
+  "schema_version": 1,
+  "slug": "minimal-being",
+  "style": "pixel-art"
+}

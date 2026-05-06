@@ -1,0 +1,160 @@
+{
+  "artifacts": [
+    {
+      "id": "spec",
+      "kind": "json",
+      "path": "spec.json",
+      "role": "input"
+    },
+    {
+      "id": "harness-plan",
+      "kind": "markdown",
+      "path": "plan.md",
+      "role": "harness-plan"
+    },
+    {
+      "id": "prompt-log",
+      "kind": "markdown",
+      "path": "prompts.md",
+      "role": "prompt-log"
+    },
+    {
+      "id": "capability-matrix",
+      "kind": "json",
+      "path": "capability-matrix.json",
+      "role": "capability-matrix"
+    },
+    {
+      "id": "identity",
+      "kind": "image",
+      "path": "identity.png",
+      "role": "identity"
+    },
+    {
+      "id": "walk-raw",
+      "kind": "image",
+      "path": "raw/walk.png",
+      "role": "raw-sheet"
+    },
+    {
+      "id": "walk-F01",
+      "kind": "image",
+      "path": "frames/walk/F01.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F02",
+      "kind": "image",
+      "path": "frames/walk/F02.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F03",
+      "kind": "image",
+      "path": "frames/walk/F03.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F04",
+      "kind": "image",
+      "path": "frames/walk/F04.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F05",
+      "kind": "image",
+      "path": "frames/walk/F05.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-F06",
+      "kind": "image",
+      "path": "frames/walk/F06.png",
+      "role": "normalized-frame"
+    },
+    {
+      "id": "walk-sheet",
+      "kind": "image",
+      "path": "walk.png",
+      "role": "final-sheet"
+    },
+    {
+      "id": "walk-contact",
+      "kind": "image",
+      "path": "walk-contact.png",
+      "role": "contact-sheet"
+    },
+    {
+      "id": "walk-gif",
+      "kind": "image",
+      "path": "walk.gif",
+      "role": "preview-gif"
+    },
+    {
+      "id": "walk-validation",
+      "kind": "json",
+      "path": "walk-validation.json",
+      "role": "validation-report"
+    },
+    {
+      "id": "being-manifest",
+      "kind": "json",
+      "path": "being-manifest.json",
+      "role": "manifest"
+    },
+    {
+      "id": "learnings",
+      "kind": "markdown",
+      "path": "learnings.md",
+      "role": "learnings-log"
+    }
+  ],
+  "capability_matrix": "capability-matrix.json",
+  "export_target": "sunny-street",
+  "failed_stage": null,
+  "harness_artifacts": {
+    "learnings": "learnings.md",
+    "plan": "plan.md",
+    "prompts": "prompts.md"
+  },
+  "manifest": "being-manifest.json",
+  "prompt": "minimal sunny street digital being",
+  "schema": "pixel-forge.agent-readable-run-summary.v1",
+  "slug": "minimal-being",
+  "stages": [
+    {
+      "artifacts": [
+        "harness-plan",
+        "prompt-log",
+        "capability-matrix"
+      ],
+      "error": null,
+      "name": "harness",
+      "status": "passed"
+    },
+    {
+      "artifacts": [
+        "identity"
+      ],
+      "error": null,
+      "name": "identity",
+      "status": "passed"
+    },
+    {
+      "artifacts": [
+        "walk-raw",
+        "walk-sheet",
+        "walk-contact",
+        "walk-gif",
+        "walk-validation"
+      ],
+      "error": null,
+      "name": "animation:walk",
+      "status": "passed"
+    }
+  ],
+  "status": "passed",
+  "validation_reports": [
+    "walk-validation.json"
+  ]
+}

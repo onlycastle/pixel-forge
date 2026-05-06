@@ -1,48 +1,57 @@
-# Digital Being Assetgen 사용 가이드
+# Digital Being Assetgen Guide
 
-`digital-being-assetgen`은 Sunny Street용 Digital Being 에셋을 만드는
-Codex 스킬입니다. 이 repo에서는 `plugins/digital-being/` 폴더가
-플러그인이고, 실제 사용 단위는 아래 스킬 파일입니다.
+`digital-being-assetgen` is the Codex skill for generating Sunny Street Digital
+Being assets.
+
+In this repository, `plugins/digital-being/` is the Codex plugin. The specific
+skill used for asset generation is:
 
 ```text
 plugins/digital-being/skills/digital-being-assetgen/SKILL.md
 ```
 
-## 1. 최신 코드 받기
+## What Teammates Need
 
-먼저 `pixel-forge` 최신 `main`을 받습니다.
+Teammates should pull the latest `pixel-forge` repository and use Codex from
+the repository root. They should not copy only `plugins/digital-being/` into an
+unrelated folder, because the skill expects the local `pixel-forge` tools,
+contracts, and references to be available from this repo.
+
+For normal use, a teammate only needs to read this file and use the
+`plugins/digital-being/` plugin that is already committed in the repo.
+
+## 1. Pull The Latest Code
 
 ```bash
 git pull origin main
 ```
 
-Codex에서는 `pixel-forge` repo root를 작업 폴더로 열어야 합니다. 그래야
-스킬이 이 repo 안의 참조 파일과 Pixel Forge 도구를 같이 읽을 수 있습니다.
+Open Codex with the `pixel-forge` repository root as the working directory.
 
-## 2. Codex에서 바로 사용하기
+## 2. Use The Skill Directly
 
-Codex에 이렇게 요청하면 됩니다.
-
-```text
-plugins/digital-being/skills/digital-being-assetgen/SKILL.md를 읽고,
-digital-being-assetgen 워크플로로 Sunny Street placeable 나무 에셋을 하나 만들어줘.
-```
-
-더 명확하게 쓰려면 target, slug, prompt를 같이 줍니다.
+Ask Codex:
 
 ```text
-digital-being-assetgen --sunny-type placeable --slug sunny-farm-tree --prompt "Sunny Street 농장 맵에 놓을 수 있는 작은 나무 placeable"
+Read plugins/digital-being/skills/digital-being-assetgen/SKILL.md and use the digital-being-assetgen workflow to create one Sunny Street placeable tree asset.
 ```
 
-## 3. `$digital-being-assetgen` 바로가기 등록하기
+For a more explicit request, include the target, slug, and prompt:
 
-매번 긴 경로를 말하고 싶지 않다면 개인 Codex skill alias를 추가합니다.
+```text
+digital-being-assetgen --sunny-type placeable --slug sunny-farm-tree --prompt "A small tree placeable for a Sunny Street farm map"
+```
+
+## 3. Optional Shortcut: `$digital-being-assetgen`
+
+If a teammate wants to invoke the skill from any Codex thread with
+`$digital-being-assetgen`, they can create this local alias skill:
 
 ```text
 ~/.codex/skills/digital-being-assetgen/SKILL.md
 ```
 
-파일 내용:
+Use this content:
 
 ````markdown
 ---
@@ -65,57 +74,60 @@ plugins/digital-being/references/sunny-street-targets.md
 ```
 ````
 
-등록 후에는 Codex에 이렇게 말하면 됩니다.
+After adding the alias, they can ask Codex:
 
 ```text
-$digital-being-assetgen --sunny-type placeable --slug sunny-farm-tree --prompt "Sunny Street 농장 맵에 놓을 수 있는 작은 나무 placeable"
+$digital-being-assetgen --sunny-type placeable --slug sunny-farm-tree --prompt "A small tree placeable for a Sunny Street farm map"
 ```
 
-## 4. 자주 쓰는 target
+The alias is optional. It is only a personal shortcut. The canonical skill stays
+versioned in this repository.
 
-- `placeable`: 나무, 제단, 가구, 장식물 같은 정적 월드 오브젝트
-- `npc-premade`: Sunny Street NPC처럼 움직이는 캐릭터
-- `ground-tileset`: 바닥 타일셋
-- `object-tileset`: 오브젝트 레이어 타일셋
-- `map`: Sunny Street 호환 Tiled `.tmj` 맵
-- `concept-only`: 런타임 준비가 아닌 시각 콘셉트
+## 4. Common Targets
 
-나무나 장식물을 만들 때는 보통 `placeable`을 사용합니다.
+- `placeable`: static world objects such as trees, shrines, furniture, and decor
+- `npc-premade`: a character that moves like a Sunny Street NPC
+- `ground-tileset`: ground terrain tiles
+- `object-tileset`: object-layer tile sheets
+- `map`: a Sunny Street-compatible Tiled `.tmj` map
+- `concept-only`: visual exploration that is not runtime-ready
 
-## 5. 결과물 위치
+For trees and decorative objects, use `placeable`.
 
-기본 출력 위치는 아래 형태입니다.
+## 5. Output Location
+
+Generated runs are saved under:
 
 ```text
 out/digital-beings/<slug>/
 ```
 
-생성 run에는 보통 다음 파일이 포함됩니다.
+A generated run should include:
 
 - `prompts.md`
 - `learnings.md`
 - `capability-matrix.json`
 - `run-summary.json`
-- 생성된 PNG와 `.meta.json` sidecar
+- generated PNG files and `.meta.json` sidecars
 
-`placeable`은 PNG와 sidecar가 준비되면 `adapter-ready`입니다. Sunny Street
-runtime에 바로 등록된 상태를 의미하는 `runtime-ready`는 별도 export가
-끝났을 때만 사용합니다.
+A `placeable` is `adapter-ready` when the PNG and sidecar match the Pixel Forge
+placeable contract. It is not `runtime-ready` until it has been exported and
+registered in Sunny Street.
 
-## 6. Sunny Street runtime까지 내보내기
+## 6. Export To Sunny Street Runtime
 
-Sunny Street repo까지 바로 반영하려면 요청에 `--export-ready`와 Sunny Street
-repo 경로를 같이 줍니다.
+To export a completed placeable into a Sunny Street repo, ask for
+`--export-ready` and provide the Sunny Street repository path:
 
 ```text
-$digital-being-assetgen --sunny-type placeable --slug sunny-farm-tree --export-ready --prompt "Sunny Street 농장 맵에 놓을 수 있는 작은 나무 placeable" --to /path/to/sunny-street
+$digital-being-assetgen --sunny-type placeable --slug sunny-farm-tree --export-ready --prompt "A small tree placeable for a Sunny Street farm map" --to /path/to/sunny-street
 ```
 
-이 경우 검증 후 아래 명령 경로를 사용합니다.
+The export path uses:
 
 ```bash
 pf being export-sunny --run-dir out/digital-beings/<slug> --to /path/to/sunny-street
 ```
 
-`runtime-ready`라고 말할 수 있으려면 Sunny Street의 placeables manifest와
-Tiled collection 등록까지 완료되어야 합니다.
+Only call the asset `runtime-ready` after the Sunny Street placeables manifest
+and Tiled collection have both been updated.

@@ -1,72 +1,48 @@
-# Digital Being Plugin
+# Digital Being Assetgen 사용 가이드
 
-Project-local Codex skills for Sunny Street Digital Being asset authoring,
-runbooks, and offline validation in `pixel-forge`.
+`digital-being-assetgen`은 Sunny Street용 Digital Being 에셋을 만드는
+Codex 스킬입니다. 이 repo에서는 `plugins/digital-being/` 폴더가
+플러그인이고, 실제 사용 단위는 아래 스킬 파일입니다.
 
-This plugin is intentionally not a second asset engine. The canonical Digital
-Being contracts and sprite processing live in the main `pixel-forge` package.
-This plugin provides:
+```text
+plugins/digital-being/skills/digital-being-assetgen/SKILL.md
+```
 
-- image-generation runbooks
-- sprite-generation runbooks
-- world/map/prop generation runbooks
-- workflow skills
-- contract notes
-- a minimal fixture
-- offline validation scripts
-- pytest coverage for the plugin pack
+## 1. 최신 코드 받기
 
-## Skills
+먼저 `pixel-forge` 최신 `main`을 받습니다.
 
-- `digital-being-init`: start a local, stub-safe Digital Being task.
-- `digital-being-assetgen`: turn a user prompt into a generated Digital Being
-  asset run using `imagegen`, then package the outputs. Use
-  `--sunny-type <target>` for Sunny Street runtime targets.
-- `digital-being-spritegen`: generate character identity and animation assets
-  using `imagegen` plus `pixel-sprite-pipeline`.
-- `digital-being-worldgen`: generate Sunny Street maps, props, tiles, and scene
-  concepts as game-ready asset packs.
-- `digital-being-runbook`: maintain `plan.md`, `prompts.md`, `learnings.md`,
-  `capability-matrix.json`, and `run-summary.json`.
-- `digital-being-validation`: validate and summarize an existing run directory.
+```bash
+git pull origin main
+```
 
-## Sunny Street Targets
+Codex에서는 `pixel-forge` repo root를 작업 폴더로 열어야 합니다. 그래야
+스킬이 이 repo 안의 참조 파일과 Pixel Forge 도구를 같이 읽을 수 있습니다.
 
-Use `digital-being-assetgen --sunny-type <target>` when an asset should be
-usable in Sunny Street:
+## 2. Codex에서 바로 사용하기
 
-- `npc-premade`
-- `player-farmer`
-- `animal-livestock24`
-- `placeable`
-- `ground-tileset`
-- `object-tileset`
-- `map`
-- `concept-only`
+Codex에 이렇게 요청하면 됩니다.
 
-Details live in `references/sunny-street-targets.md`.
+```text
+plugins/digital-being/skills/digital-being-assetgen/SKILL.md를 읽고,
+digital-being-assetgen 워크플로로 Sunny Street placeable 나무 에셋을 하나 만들어줘.
+```
 
-## Sharing And Registration
+더 명확하게 쓰려면 target, slug, prompt를 같이 줍니다.
 
-This folder is the plugin. Each workflow is a skill markdown file under
-`skills/<skill-name>/SKILL.md`, and `.codex-plugin/plugin.json` tells Codex
-where to find those skills.
+```text
+digital-being-assetgen --sunny-type placeable --slug sunny-farm-tree --prompt "Sunny Street 농장 맵에 놓을 수 있는 작은 나무 placeable"
+```
 
-Recommended team setup:
+## 3. `$digital-being-assetgen` 바로가기 등록하기
 
-1. Commit `plugins/digital-being/` with the `pixel-forge` repo.
-2. Ask teammates to pull the latest repo.
-3. In Codex, use the project from the `pixel-forge` repo root so the plugin can
-   read the local `tools/pixel_forge` package and the Sunny Street reference
-   files.
-
-For a personal shortcut, create this alias skill outside the repo:
+매번 긴 경로를 말하고 싶지 않다면 개인 Codex skill alias를 추가합니다.
 
 ```text
 ~/.codex/skills/digital-being-assetgen/SKILL.md
 ```
 
-Use this file content:
+파일 내용:
 
 ````markdown
 ---
@@ -89,48 +65,57 @@ plugins/digital-being/references/sunny-street-targets.md
 ```
 ````
 
-The alias is optional. It is useful when a teammate wants to type
-`$digital-being-assetgen` from any Codex thread, while still keeping the
-canonical instructions versioned in this repo.
+등록 후에는 Codex에 이렇게 말하면 됩니다.
 
-Do not copy only the alias if the teammate does not also have this repo. The
-alias delegates to the canonical plugin files, so the portable unit is the full
-`plugins/digital-being/` directory.
-
-## V1 Boundary
-
-The canonical `pixel_forge being generate` backend is still deterministic
-`stub` only. The creative authoring skills may use Codex's built-in `imagegen`
-tool when the user asks to create assets, but plugin scripts and CI remain
-offline.
-
-V1 does not add these as engine backends:
-
-- no GPT-5.5 orchestration
-- no remove.bg provider
-- no image2video provider
-- no web curation UI
-- no sprite algorithm wrapper
-
-## Validate The Fixture
-
-```bash
-.venv/bin/python plugins/digital-being/scripts/check_artifacts.py plugins/digital-being/examples/minimal-being
-.venv/bin/python plugins/digital-being/scripts/validate_manifest.py plugins/digital-being/examples/minimal-being/being-manifest.json plugins/digital-being/examples/minimal-being
-.venv/bin/python plugins/digital-being/scripts/summarize_run.py plugins/digital-being/examples/minimal-being
+```text
+$digital-being-assetgen --sunny-type placeable --slug sunny-farm-tree --prompt "Sunny Street 농장 맵에 놓을 수 있는 작은 나무 placeable"
 ```
 
-## Regenerate The Fixture
+## 4. 자주 쓰는 target
 
-The fixture is small and stub-generated. To regenerate it:
+- `placeable`: 나무, 제단, 가구, 장식물 같은 정적 월드 오브젝트
+- `npc-premade`: Sunny Street NPC처럼 움직이는 캐릭터
+- `ground-tileset`: 바닥 타일셋
+- `object-tileset`: 오브젝트 레이어 타일셋
+- `map`: Sunny Street 호환 Tiled `.tmj` 맵
+- `concept-only`: 런타임 준비가 아닌 시각 콘셉트
 
-```bash
-rm -rf plugins/digital-being/examples/minimal-being
-.venv/bin/python -m pixel_forge being generate \
-  --slug minimal-being \
-  --prompt "minimal sunny street digital being" \
-  --out plugins/digital-being/examples \
-  --backend stub
+나무나 장식물을 만들 때는 보통 `placeable`을 사용합니다.
+
+## 5. 결과물 위치
+
+기본 출력 위치는 아래 형태입니다.
+
+```text
+out/digital-beings/<slug>/
 ```
 
-After regenerating, run the validators and pytest.
+생성 run에는 보통 다음 파일이 포함됩니다.
+
+- `prompts.md`
+- `learnings.md`
+- `capability-matrix.json`
+- `run-summary.json`
+- 생성된 PNG와 `.meta.json` sidecar
+
+`placeable`은 PNG와 sidecar가 준비되면 `adapter-ready`입니다. Sunny Street
+runtime에 바로 등록된 상태를 의미하는 `runtime-ready`는 별도 export가
+끝났을 때만 사용합니다.
+
+## 6. Sunny Street runtime까지 내보내기
+
+Sunny Street repo까지 바로 반영하려면 요청에 `--export-ready`와 Sunny Street
+repo 경로를 같이 줍니다.
+
+```text
+$digital-being-assetgen --sunny-type placeable --slug sunny-farm-tree --export-ready --prompt "Sunny Street 농장 맵에 놓을 수 있는 작은 나무 placeable" --to /path/to/sunny-street
+```
+
+이 경우 검증 후 아래 명령 경로를 사용합니다.
+
+```bash
+pf being export-sunny --run-dir out/digital-beings/<slug> --to /path/to/sunny-street
+```
+
+`runtime-ready`라고 말할 수 있으려면 Sunny Street의 placeables manifest와
+Tiled collection 등록까지 완료되어야 합니다.
